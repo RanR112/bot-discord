@@ -148,4 +148,32 @@ describe('DiscordBotService', () => {
     assert.match(capturedHeaders['user-agent'], /^DiscordBot \(/);
     assert.doesNotMatch(capturedHeaders['user-agent'], /Chrome|Mozilla|AppleWebKit/);
   });
+
+  it('editChannelMessage mengirim PATCH ke URL pesan yang benar', async (t) => {
+    t.after(() => mock.restoreAll());
+    let capturedUrl;
+    let capturedMethod;
+    mock.method(globalThis, 'fetch', async (url, init) => {
+      capturedUrl = String(url);
+      capturedMethod = init.method;
+      return new Response(JSON.stringify({ id: 'msg-1' }), { status: 200 });
+    });
+
+    const service = new DiscordBotService({ botToken: 'x', retries: 0, logger: silentLogger });
+    const result = await service.editChannelMessage('999', 'msg-1', { content: 'update' });
+
+    assert.equal(capturedMethod, 'PATCH');
+    assert.ok(capturedUrl.endsWith('/channels/999/messages/msg-1'));
+    assert.equal(result.id, 'msg-1');
+  });
+
+  it('editChannelMessage memberi hint jelas saat 404 (pesan sudah dihapus)', async (t) => {
+    t.after(() => mock.restoreAll());
+    mock.method(globalThis, 'fetch', async () => new Response('{"message":"Unknown Message"}', { status: 404 }));
+
+    const service = new DiscordBotService({ botToken: 'x', retries: 0, logger: silentLogger });
+    await assert.rejects(() => service.editChannelMessage('999', 'msg-1', { content: 'x' }), {
+      status: 404,
+    });
+  });
 });

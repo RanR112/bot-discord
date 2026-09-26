@@ -66,45 +66,6 @@ function readInteger(env, key, fallback, bounds, errors) {
 }
 
 /**
- * Memvalidasi bentuk URL webhook Discord tanpa menghubungi jaringan.
- *
- * @param {string|undefined} raw
- * @param {string} key
- * @param {string[]} errors
- * @returns {string|null}
- */
-function readWebhookUrl(raw, key, errors) {
-  const value = raw?.trim();
-  if (!value) return null;
-
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    errors.push(`${key} bukan URL yang valid.`);
-    return null;
-  }
-
-  if (url.protocol !== 'https:') {
-    errors.push(`${key} harus memakai https.`);
-    return null;
-  }
-  if (!/^(canary\.|ptb\.)?discord(app)?\.com$/i.test(url.hostname)) {
-    errors.push(`${key} harus mengarah ke domain discord.com, dapat "${url.hostname}".`);
-    return null;
-  }
-  if (!/^\/api\/(v\d+\/)?webhooks\/\d+\/[\w-]+$/.test(url.pathname)) {
-    errors.push(
-      `${key} formatnya salah. Harus seperti https://discord.com/api/webhooks/<id>/<token>.`,
-    );
-    return null;
-  }
-
-  // Query string dibuang: `?wait=true` ditambahkan sendiri oleh discord service.
-  return `${url.origin}${url.pathname}`;
-}
-
-/**
  * Memvalidasi format Discord snowflake id (guild id, channel id, dll):
  * murni digit, 17-20 karakter.
  *
@@ -146,30 +107,26 @@ export function buildConfig(env = process.env) {
     );
   }
 
-  const liveWebhookUrl = readWebhookUrl(
-    env.DISCORD_LIVE_WEBHOOK_URL,
-    'DISCORD_LIVE_WEBHOOK_URL',
-    errors,
-  );
-  const contentWebhookUrl = readWebhookUrl(
-    env.DISCORD_CONTENT_WEBHOOK_URL,
-    'DISCORD_CONTENT_WEBHOOK_URL',
+  // --- Discord: SATU Bot Token dipakai bersama untuk LIVE, konten, dan
+  // welcome member -- tidak ada lagi webhook. Tiap fitur dibedakan lewat
+  // channel id-nya sendiri, bukan lewat kredensial terpisah seperti webhook
+  // dulu (pemisahan channel tetap dijamin secara struktural lewat kode di
+  // discordNotifier.js: satu instance = satu channel id per notifikasi).
+  const botToken = env.DISCORD_BOT_TOKEN?.trim() || null;
+  const liveChannelId = readSnowflake(env.DISCORD_LIVE_CHANNEL_ID, 'DISCORD_LIVE_CHANNEL_ID', errors);
+  const contentChannelId = readSnowflake(
+    env.DISCORD_CONTENT_CHANNEL_ID,
+    'DISCORD_CONTENT_CHANNEL_ID',
     errors,
   );
 
-  // Catatan: pengecekan "minimal satu fitur harus aktif" (webhook TikTok ATAU
-  // welcome member) dipindah ke akhir fungsi, setelah field welcome selesai
-  // di-parse -- supaya setup yang cuma pakai welcome (tanpa TikTok sama
-  // sekali) tetap valid.
-  if (!liveWebhookUrl) {
-    warnings.push(
-      'DISCORD_LIVE_WEBHOOK_URL belum diisi — monitoring LIVE dinonaktifkan.',
-    );
+  // Catatan: pengecekan "minimal satu fitur harus aktif" dipindah ke akhir
+  // fungsi, setelah field welcome & botToken selesai di-parse.
+  if (!liveChannelId) {
+    warnings.push('DISCORD_LIVE_CHANNEL_ID belum diisi — monitoring LIVE dinonaktifkan.');
   }
-  if (!contentWebhookUrl) {
-    warnings.push(
-      'DISCORD_CONTENT_WEBHOOK_URL belum diisi — monitoring konten dinonaktifkan.',
-    );
+  if (!contentChannelId) {
+    warnings.push('DISCORD_CONTENT_CHANNEL_ID belum diisi — monitoring konten dinonaktifkan.');
   }
 
   const checkInterval = readInteger(
@@ -233,7 +190,8 @@ export function buildConfig(env = process.env) {
   const stateFile = resolve(env.STATE_FILE?.trim() || './data/state.json');
 
   // --- Welcome member (opsional, fitur terpisah dari notifikasi TikTok) ---
-  const botToken = env.DISCORD_BOT_TOKEN?.trim() || null;
+  // DISCORD_GUILD_ID dan DISCORD_WELCOME_CHANNEL_ID wajib diisi BERSAMAAN
+  // (botToken sudah dicek terpisah di bawah, sekarang kredensial bersama).
   const guildId = readSnowflake(env.DISCORD_GUILD_ID, 'DISCORD_GUILD_ID', errors);
   const welcomeChannelId = readSnowflake(
     env.DISCORD_WELCOME_CHANNEL_ID,
@@ -242,27 +200,40 @@ export function buildConfig(env = process.env) {
   );
   const welcomeMaxPerCycle = readInteger(env, 'WELCOME_MAX_PER_CYCLE', 5, { min: 1, max: 50 }, errors);
 
-  const welcomeFieldsPresent = [botToken, guildId, welcomeChannelId].filter(Boolean).length;
-  if (welcomeFieldsPresent > 0 && welcomeFieldsPresent < 3) {
+  const welcomePairPresent = [guildId, welcomeChannelId].filter(Boolean).length;
+  if (welcomePairPresent === 1) {
     errors.push(
-      'Fitur welcome member butuh KETIGA variable ini diisi bersamaan: ' +
-        'DISCORD_BOT_TOKEN, DISCORD_GUILD_ID, DISCORD_WELCOME_CHANNEL_ID. ' +
-        'Kosongkan ketiganya untuk mematikan fitur ini, atau isi semuanya untuk mengaktifkan.',
+      'DISCORD_GUILD_ID dan DISCORD_WELCOME_CHANNEL_ID harus diisi bersamaan untuk fitur welcome member. ' +
+        'Kosongkan keduanya untuk mematikan fitur ini, atau isi keduanya untuk mengaktifkan.',
     );
   }
-  const welcomeEnabled = welcomeFieldsPresent === 3;
-  if (welcomeFieldsPresent === 0) {
-    warnings.push(
-      'DISCORD_BOT_TOKEN/DISCORD_GUILD_ID/DISCORD_WELCOME_CHANNEL_ID belum diisi — fitur sambutan member baru dinonaktifkan.',
+  if (welcomePairPresent === 0) {
+    warnings.push('DISCORD_GUILD_ID/DISCORD_WELCOME_CHANNEL_ID belum diisi — fitur sambutan member baru dinonaktifkan.');
+  }
+
+  const liveEnabled = Boolean(botToken && liveChannelId);
+  const contentEnabled = Boolean(botToken && contentChannelId) && contentProvider !== 'disabled';
+  const welcomeEnabled = Boolean(botToken && guildId && welcomeChannelId);
+
+  // Channel id sudah diisi tapi bot token belum -- ini beda dari "fitur
+  // dimatikan sengaja", jadi wajib error yang jelas, bukan cuma warning.
+  if (!botToken && (liveChannelId || contentChannelId || welcomePairPresent === 2)) {
+    errors.push(
+      'DISCORD_BOT_TOKEN wajib diisi karena minimal satu channel Discord sudah dikonfigurasi ' +
+        '(DISCORD_LIVE_CHANNEL_ID / DISCORD_CONTENT_CHANNEL_ID / DISCORD_GUILD_ID+DISCORD_WELCOME_CHANNEL_ID).',
     );
+  } else if (!botToken) {
+    warnings.push('DISCORD_BOT_TOKEN belum diisi — semua fitur Discord (LIVE, konten, welcome) dinonaktifkan.');
   }
 
   // Setidaknya satu fitur (LIVE, konten, atau welcome member) harus aktif.
-  if (!liveWebhookUrl && !contentWebhookUrl && !welcomeEnabled) {
+  // Kalau ada channel yang sudah dikonfigurasi tapi botToken kosong, error
+  // spesifik di atas sudah cukup menjelaskan -- tidak perlu pesan generik ini juga.
+  const anyChannelConfigured = Boolean(liveChannelId || contentChannelId || welcomePairPresent > 0);
+  if (!liveEnabled && !contentEnabled && !welcomeEnabled && !anyChannelConfigured) {
     errors.push(
-      'Tidak ada fitur yang aktif. Isi minimal salah satu dari DISCORD_LIVE_WEBHOOK_URL, ' +
-        'DISCORD_CONTENT_WEBHOOK_URL, atau ketiga variable welcome member (DISCORD_BOT_TOKEN, ' +
-        'DISCORD_GUILD_ID, DISCORD_WELCOME_CHANNEL_ID).',
+      'Tidak ada fitur yang aktif. Isi DISCORD_BOT_TOKEN plus minimal salah satu dari ' +
+        'DISCORD_LIVE_CHANNEL_ID, DISCORD_CONTENT_CHANNEL_ID, atau (DISCORD_GUILD_ID + DISCORD_WELCOME_CHANNEL_ID).',
     );
   }
 
@@ -279,8 +250,9 @@ export function buildConfig(env = process.env) {
     liveUrl: `https://www.tiktok.com/@${username}/live`,
 
     discord: Object.freeze({
-      liveWebhookUrl,
-      contentWebhookUrl,
+      botToken,
+      liveChannelId,
+      contentChannelId,
     }),
 
     checkInterval,
@@ -296,11 +268,10 @@ export function buildConfig(env = process.env) {
     logLevel,
     stateFile,
 
-    liveEnabled: Boolean(liveWebhookUrl),
-    contentEnabled: Boolean(contentWebhookUrl) && contentProvider !== 'disabled',
+    liveEnabled,
+    contentEnabled,
 
     welcome: Object.freeze({
-      botToken,
       guildId,
       channelId: welcomeChannelId,
       maxPerCycle: welcomeMaxPerCycle,

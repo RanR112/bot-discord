@@ -8,7 +8,7 @@
  */
 
 import { buildConfig, loadEnvFile } from './config.js';
-import { DiscordService } from './services/discord.js';
+import { DiscordNotifier } from './services/discordNotifier.js';
 import { DiscordBotService } from './services/discordBot.js';
 import { TikTokService } from './services/tiktok.js';
 import { LiveMonitor } from './monitors/liveMonitor.js';
@@ -48,7 +48,7 @@ async function main() {
 
   if (!config.liveEnabled && !config.contentEnabled && !config.welcomeEnabled) {
     logger.error(
-      'Tidak ada monitor yang aktif. Isi minimal satu webhook TikTok, atau kredensial welcome member, di .env.',
+      'Tidak ada monitor yang aktif. Isi DISCORD_BOT_TOKEN plus minimal satu channel (LIVE/konten/welcome) di .env.',
     );
     process.exitCode = 1;
     return;
@@ -64,11 +64,19 @@ async function main() {
   await store.load();
 
   // --- 3. Services -----------------------------------------------------------
-  const discord = new DiscordService({
-    liveWebhookUrl: config.discord.liveWebhookUrl,
-    contentWebhookUrl: config.discord.contentWebhookUrl,
+  // Satu DiscordBotService dipakai bersama oleh LIVE, konten, dan welcome --
+  // satu Bot Token untuk semuanya, dibedakan lewat channel id masing-masing.
+  const discordBot = new DiscordBotService({
+    botToken: config.discord.botToken,
     timeoutMs: config.requestTimeout,
     retries: config.maxRetries,
+    logger: createLogger('discordBot'),
+  });
+
+  const discord = new DiscordNotifier({
+    discordBot,
+    liveChannelId: config.discord.liveChannelId,
+    contentChannelId: config.discord.contentChannelId,
     logger: createLogger('discord'),
   });
 
@@ -93,12 +101,6 @@ async function main() {
     );
   }
   if (config.welcomeEnabled) {
-    const discordBot = new DiscordBotService({
-      botToken: config.welcome.botToken,
-      timeoutMs: config.requestTimeout,
-      retries: config.maxRetries,
-      logger: createLogger('discordBot'),
-    });
     monitors.push(
       new WelcomeMonitor({ discordBot, store, config, logger: createLogger('welcome') }),
     );

@@ -55,19 +55,22 @@ jobs:
       - name: Jalankan satu siklus pengecekan
         env:
           TIKTOK_USERNAME: ${{ secrets.TIKTOK_USERNAME }}
-          DISCORD_LIVE_WEBHOOK_URL: ${{ secrets.DISCORD_LIVE_WEBHOOK_URL }}
-          DISCORD_CONTENT_WEBHOOK_URL: ${{ secrets.DISCORD_CONTENT_WEBHOOK_URL }}
+          # Satu Bot Token dipakai bersama untuk LIVE, konten, dan welcome --
+          # webhook sudah tidak dipakai lagi. Tiap fitur dibedakan lewat
+          # channel id-nya sendiri (kosong = fitur itu dinonaktifkan dengan
+          # WARN, bukan error).
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_LIVE_CHANNEL_ID: ${{ secrets.DISCORD_LIVE_CHANNEL_ID }}
+          DISCORD_CONTENT_CHANNEL_ID: ${{ secrets.DISCORD_CONTENT_CHANNEL_ID }}
           # Provider konten "official" (Display API) -- tanpa ini, otomatis
           # jatuh ke default "web" yang best-effort/sering diblokir WAF.
           TIKTOK_CONTENT_PROVIDER: ${{ secrets.TIKTOK_CONTENT_PROVIDER }}
           TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
-          # Fitur sambutan member baru (opsional) -- ketiganya wajib diisi
-          # BERSAMAAN di GitHub Secrets, atau dikosongkan semua kalau fitur
-          # ini tidak dipakai. Kosong = config.js otomatis menonaktifkannya
-          # dengan WARN, bukan error.
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          # Fitur sambutan member baru (opsional) -- keduanya wajib diisi
+          # BERSAMAAN di GitHub Secrets, atau dikosongkan berdua kalau fitur
+          # ini tidak dipakai.
           DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
           DISCORD_WELCOME_CHANNEL_ID: ${{ secrets.DISCORD_WELCOME_CHANNEL_ID }}
           # Nilai ini wajib diisi validator config walau di mode --once

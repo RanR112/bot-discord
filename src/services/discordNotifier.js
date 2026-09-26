@@ -1,17 +1,18 @@
 /**
- * Discord webhook service.
+ * Discord notifier — LIVE & konten, lewat Bot Token + channel id.
  *
  * Dua fungsi terpisah dengan tujuan yang tidak ambigu:
- *   sendLiveNotification(data)    -> HANYA ke DISCORD_LIVE_WEBHOOK_URL
- *   sendContentNotification(data) -> HANYA ke DISCORD_CONTENT_WEBHOOK_URL
+ *   sendLiveNotification(data)    -> HANYA ke DISCORD_LIVE_CHANNEL_ID
+ *   sendContentNotification(data) -> HANYA ke DISCORD_CONTENT_CHANNEL_ID
  *
- * URL diikat ke instance saat konstruksi dan tidak pernah dilewatkan sebagai
- * argumen, sehingga secara struktural mustahil mengirim notifikasi konten ke
- * webhook LIVE atau sebaliknya.
+ * Channel id diikat ke instance saat konstruksi dan tidak pernah dilewatkan
+ * sebagai argumen, sehingga secara struktural mustahil mengirim notifikasi
+ * konten ke channel LIVE atau sebaliknya -- pola yang sama seperti versi
+ * webhook sebelumnya, cuma transportnya diganti dari webhook URL menjadi
+ * Bot Token (lewat DiscordBotService) supaya satu bot bisa menangani semua
+ * (LIVE, konten, welcome) tanpa perlu mengelola beberapa webhook terpisah.
  */
 
-import { HttpError } from '../utils/errors.js';
-import { fetchWithTimeout, isRetryableStatus, parseRetryAfter, withRetry } from '../utils/http.js';
 import { formatNumber, safeUrl, toIsoTimestamp, truncate } from '../utils/format.js';
 
 /** Merah khas TikTok — dipakai untuk LIVE. */
@@ -167,109 +168,41 @@ export function buildContentEmbed(data) {
   });
 }
 
-export class DiscordService {
+export class DiscordNotifier {
   /**
    * @param {{
-   *   liveWebhookUrl: string|null,
-   *   contentWebhookUrl: string|null,
-   *   timeoutMs?: number,
-   *   retries?: number,
+   *   discordBot: import('./discordBot.js').DiscordBotService,
+   *   liveChannelId: string|null,
+   *   contentChannelId: string|null,
    *   logger: ReturnType<typeof import('../utils/logger.js').createLogger>,
    * }} options
    */
-  constructor({ liveWebhookUrl, contentWebhookUrl, timeoutMs = 15_000, retries = 3, logger }) {
-    this.liveWebhookUrl = liveWebhookUrl;
-    this.contentWebhookUrl = contentWebhookUrl;
-    this.timeoutMs = timeoutMs;
-    this.retries = retries;
+  constructor({ discordBot, liveChannelId, contentChannelId, logger }) {
+    this.discordBot = discordBot;
+    this.liveChannelId = liveChannelId;
+    this.contentChannelId = contentChannelId;
     this.logger = logger;
   }
 
   /**
-   * Mengirim satu request ke Discord dengan retry + penghormatan rate limit.
-   *
-   * @param {string} url
-   * @param {object} payload
-   * @param {{ method?: string, label: string }} options
-   * @returns {Promise<{ id: string|null }>}
-   * @private
-   */
-  async #request(url, payload, { method = 'POST', label }) {
-    // `?wait=true` membuat Discord membalas objek pesan, sehingga id-nya bisa
-    // disimpan dan pesan LIVE yang sama bisa di-EDIT saat penonton berubah.
-    const target = method === 'POST' ? `${url}?wait=true` : url;
-
-    return withRetry(
-      async () => {
-        const response = await fetchWithTimeout(target, {
-          method,
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
-          timeoutMs: this.timeoutMs,
-        });
-
-        const text = await response.text();
-
-        if (response.status === 429) {
-          const retryAfterMs = parseRetryAfter(response.headers) ?? 5000;
-          this.logger.warn(
-            `Discord rate limit (429) saat ${label}. Menunggu ${retryAfterMs}ms sebelum mencoba lagi.`,
-          );
-          throw new HttpError('Discord rate limit', {
-            status: 429,
-            retryable: true,
-            retryAfterMs,
-          });
-        }
-
-        if (!response.ok) {
-          throw new HttpError(`Discord membalas HTTP ${response.status} saat ${label}`, {
-            status: response.status,
-            retryable: isRetryableStatus(response.status),
-            body: text.slice(0, 300),
-          });
-        }
-
-        try {
-          const body = text ? JSON.parse(text) : null;
-          return { id: body?.id ?? null };
-        } catch {
-          return { id: null };
-        }
-      },
-      {
-        retries: this.retries,
-        onRetry: ({ attempt, delayMs, error }) => {
-          this.logger.warn(
-            `Percobaan ulang ${attempt}/${this.retries} untuk ${label} dalam ${delayMs}ms: ${error.message}`,
-          );
-        },
-      },
-    );
-  }
-
-  /**
-   * Notifikasi LIVE. HANYA memakai DISCORD_LIVE_WEBHOOK_URL.
+   * Notifikasi LIVE. HANYA memakai DISCORD_LIVE_CHANNEL_ID.
    *
    * @param {import('../types.js').LiveStatus} data
-   * @returns {Promise<{ id: string|null }|null>} null kalau webhook tidak dikonfigurasi
+   * @returns {Promise<{ id: string|null }|null>} null kalau channel tidak dikonfigurasi
    */
   async sendLiveNotification(data) {
-    if (!this.liveWebhookUrl) {
-      this.logger.debug('Notifikasi LIVE dilewati: DISCORD_LIVE_WEBHOOK_URL tidak dikonfigurasi.');
+    if (!this.liveChannelId) {
+      this.logger.debug('Notifikasi LIVE dilewati: DISCORD_LIVE_CHANNEL_ID tidak dikonfigurasi.');
       return null;
     }
 
     const payload = {
-      username: 'Tuyul Bot',
       content: `🔴 **@${data.username}** sedang LIVE!`,
       embeds: [buildLiveEmbed(data)],
       allowed_mentions: { parse: [] },
     };
 
-    const result = await this.#request(this.liveWebhookUrl, payload, {
-      label: 'kirim notifikasi LIVE',
-    });
+    const result = await this.discordBot.sendChannelMessage(this.liveChannelId, payload);
     this.logger.info(`Notifikasi LIVE terkirim untuk @${data.username}`, {
       liveId: data.liveId,
       messageId: result.id,
@@ -287,7 +220,7 @@ export class DiscordService {
    * @returns {Promise<boolean>} true kalau berhasil
    */
   async updateLiveNotification(messageId, data, options = {}) {
-    if (!this.liveWebhookUrl || !messageId) return false;
+    if (!this.liveChannelId || !messageId) return false;
 
     const payload = {
       content: options.ended
@@ -298,10 +231,7 @@ export class DiscordService {
     };
 
     try {
-      await this.#request(`${this.liveWebhookUrl}/messages/${messageId}`, payload, {
-        method: 'PATCH',
-        label: 'update pesan LIVE',
-      });
+      await this.discordBot.editChannelMessage(this.liveChannelId, messageId, payload);
       this.logger.info(`Pesan LIVE diperbarui untuk @${data.username}`, {
         messageId,
         viewers: data.viewers,
@@ -317,29 +247,24 @@ export class DiscordService {
   }
 
   /**
-   * Notifikasi konten baru. HANYA memakai DISCORD_CONTENT_WEBHOOK_URL.
+   * Notifikasi konten baru. HANYA memakai DISCORD_CONTENT_CHANNEL_ID.
    *
    * @param {import('../types.js').ContentItem} data
-   * @returns {Promise<{ id: string|null }|null>} null kalau webhook tidak dikonfigurasi
+   * @returns {Promise<{ id: string|null }|null>} null kalau channel tidak dikonfigurasi
    */
   async sendContentNotification(data) {
-    if (!this.contentWebhookUrl) {
-      this.logger.debug(
-        'Notifikasi konten dilewati: DISCORD_CONTENT_WEBHOOK_URL tidak dikonfigurasi.',
-      );
+    if (!this.contentChannelId) {
+      this.logger.debug('Notifikasi konten dilewati: DISCORD_CONTENT_CHANNEL_ID tidak dikonfigurasi.');
       return null;
     }
 
     const payload = {
-      username: 'Tuyul Bot',
       content: `🎬 Video baru dari **@${data.username}**`,
       embeds: [buildContentEmbed(data)],
       allowed_mentions: { parse: [] },
     };
 
-    const result = await this.#request(this.contentWebhookUrl, payload, {
-      label: 'kirim notifikasi konten',
-    });
+    const result = await this.discordBot.sendChannelMessage(this.contentChannelId, payload);
     this.logger.info(`Notifikasi konten terkirim untuk video ${data.id}`, {
       messageId: result.id,
     });

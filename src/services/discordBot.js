@@ -1,13 +1,18 @@
 /**
- * Discord Bot REST client — terpisah total dari discord.js (webhook service).
+ * Discord Bot REST client.
  *
- * Webhook cuma bisa MENGIRIM pesan (satu arah). Untuk tahu SIAPA yang baru
- * join server, aplikasi perlu membaca daftar member lewat REST API, dan itu
- * butuh Bot Token (bukan URL webhook) yang di-invite ke server dengan
- * privileged intent "Server Members" diaktifkan di Developer Portal.
+ * Satu-satunya jalur komunikasi ke Discord di project ini (webhook sudah
+ * tidak dipakai lagi -- semua notifikasi LIVE, konten, dan welcome sama-sama
+ * lewat Bot Token + channel id). Dipakai untuk tiga hal:
+ *   1. Membaca daftar member server (butuh privileged intent "Server
+ *      Members" aktif di Developer Portal) -- untuk fitur welcome.
+ *   2. Mengirim pesan baru ke sebuah channel (LIVE, konten, welcome, rules).
+ *   3. Mengedit pesan yang sudah terkirim (update jumlah penonton LIVE tanpa
+ *      mengirim pesan baru).
  *
  * Referensi resmi: https://discord.com/developers/docs/resources/guild
- * (List Guild Members) dan .../resources/message (Create Message, multipart).
+ * (List Guild Members) dan .../resources/message (Create Message & Edit
+ * Message, termasuk multipart untuk attachment).
  */
 
 import { HttpError } from '../utils/errors.js';
@@ -197,36 +202,37 @@ export class DiscordBotService {
   }
 
   /**
-   * Mengirim pesan ke channel lewat Bot Token, dengan lampiran gambar
-   * (multipart/form-data). Dipakai untuk pesan selamat datang bergambar.
+   * Membangun FormData multipart untuk body Create/Edit Message. Dipisah
+   * dari #request supaya dipakai bersama oleh send & edit.
    *
-   * @param {string} channelId
-   * @param {{
-   *   embeds?: object[],
-   *   content?: string,
-   *   file?: { buffer: Buffer, filename: string, contentType: string },
-   * }} payload
-   * @returns {Promise<{ id: string|null }>}
+   * @param {{ embeds?: object[], content?: string, file?: { buffer: Buffer, filename: string, contentType: string } }} payload
+   * @private
    */
-  async sendChannelMessage(channelId, payload) {
+  #buildForm(payload) {
     const { file, ...jsonPayload } = payload;
-
     const form = new FormData();
     form.append('payload_json', JSON.stringify(jsonPayload));
     if (file) {
-      form.append(
-        'files[0]',
-        new Blob([file.buffer], { type: file.contentType }),
-        file.filename,
-      );
+      form.append('files[0]', new Blob([file.buffer], { type: file.contentType }), file.filename);
     }
+    return form;
+  }
 
+  /**
+   * @param {string} url
+   * @param {string} method
+   * @param {object} payload
+   * @param {string} label dipakai di pesan error/log, mis. "kirim pesan LIVE"
+   * @returns {Promise<{ id: string|null }>}
+   * @private
+   */
+  async #request(url, method, payload, label) {
     return withRetry(
       async () => {
-        const response = await fetchWithTimeout(`${API_BASE}/channels/${channelId}/messages`, {
-          method: 'POST',
+        const response = await fetchWithTimeout(url, {
+          method,
           headers: this.#headers(),
-          body: form,
+          body: this.#buildForm(payload),
           timeoutMs: this.timeoutMs,
         });
         const text = await response.text();
@@ -234,9 +240,11 @@ export class DiscordBotService {
         if (!response.ok) {
           const hint =
             response.status === 403
-              ? ' Bot mungkin tidak punya izin "Send Messages"/"Attach Files" di channel ini.'
-              : '';
-          throw new HttpError(`HTTP ${response.status} saat kirim pesan welcome.${hint}`, {
+              ? ' Bot mungkin tidak punya izin "Send Messages"/"Embed Links"/"Attach Files" di channel ini, atau channel id-nya salah.'
+              : response.status === 404
+                ? ' Channel atau pesan tidak ditemukan -- cek DISCORD_*_CHANNEL_ID, atau pesannya sudah dihapus manual.'
+                : '';
+          throw new HttpError(`HTTP ${response.status} saat ${label}.${hint}`, {
             status: response.status,
             retryable: isRetryableStatus(response.status),
             retryAfterMs: parseRetryAfter(response.headers),
@@ -254,11 +262,45 @@ export class DiscordBotService {
       {
         retries: this.retries,
         onRetry: ({ attempt, delayMs, error }) => {
-          this.logger.warn(
-            `Percobaan ulang ${attempt} kirim pesan welcome dalam ${delayMs}ms: ${error.message}`,
-          );
+          this.logger.warn(`Percobaan ulang ${attempt} ${label} dalam ${delayMs}ms: ${error.message}`);
         },
       },
+    );
+  }
+
+  /**
+   * Mengirim pesan BARU ke sebuah channel, dengan dukungan lampiran gambar
+   * (multipart/form-data). Dipakai untuk LIVE, konten, welcome, dan pesan
+   * biasa lainnya.
+   *
+   * @param {string} channelId
+   * @param {{
+   *   embeds?: object[],
+   *   content?: string,
+   *   file?: { buffer: Buffer, filename: string, contentType: string },
+   * }} payload
+   * @returns {Promise<{ id: string|null }>}
+   */
+  async sendChannelMessage(channelId, payload) {
+    return this.#request(`${API_BASE}/channels/${channelId}/messages`, 'POST', payload, 'kirim pesan');
+  }
+
+  /**
+   * Mengedit pesan yang SUDAH ADA. Dipakai untuk update jumlah penonton LIVE
+   * tanpa mengirim pesan baru (setara `PATCH .../webhooks/.../messages/<id>`
+   * di era webhook, sekarang lewat Bot Token).
+   *
+   * @param {string} channelId
+   * @param {string} messageId
+   * @param {{ embeds?: object[], content?: string }} payload
+   * @returns {Promise<{ id: string|null }>}
+   */
+  async editChannelMessage(channelId, messageId, payload) {
+    return this.#request(
+      `${API_BASE}/channels/${channelId}/messages/${messageId}`,
+      'PATCH',
+      payload,
+      'edit pesan',
     );
   }
 }

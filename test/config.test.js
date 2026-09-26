@@ -7,15 +7,19 @@ import { backoffDelay, isRetryableStatus, parseRetryAfter, withRetry } from '../
 import { HttpError } from '../src/utils/errors.js';
 import { formatNumber, normalizeUsername, safeUrl, toIsoTimestamp, truncate } from '../src/utils/format.js';
 
-const VALID_LIVE = 'https://discord.com/api/webhooks/111111111111111111/live-token';
-const VALID_CONTENT = 'https://discord.com/api/webhooks/222222222222222222/content-token';
+const BOT_TOKEN = 'bot-token-rahasia';
+const LIVE_CHANNEL_ID = '111111111111111111';
+const CONTENT_CHANNEL_ID = '222222222222222222';
+const GUILD_ID = '333333333333333333';
+const WELCOME_CHANNEL_ID = '444444444444444444';
 
 describe('buildConfig', () => {
   it('menerima konfigurasi minimal yang valid', () => {
     const config = buildConfig({
       TIKTOK_USERNAME: 'someone',
-      DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE,
-      DISCORD_CONTENT_WEBHOOK_URL: VALID_CONTENT,
+      DISCORD_BOT_TOKEN: BOT_TOKEN,
+      DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID,
+      DISCORD_CONTENT_CHANNEL_ID: CONTENT_CHANNEL_ID,
     });
 
     assert.equal(config.username, 'someone');
@@ -23,17 +27,21 @@ describe('buildConfig', () => {
     assert.equal(config.liveEnabled, true);
     assert.equal(config.contentEnabled, true);
     assert.equal(config.contentProvider, 'web');
+    assert.equal(config.discord.botToken, BOT_TOKEN);
   });
 
   it('gagal dengan pesan jelas kalau TIKTOK_USERNAME kosong', () => {
-    assert.throws(() => buildConfig({ DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE }), (error) => {
-      assert.ok(error instanceof ConfigError);
-      assert.match(error.message, /TIKTOK_USERNAME wajib diisi/);
-      return true;
-    });
+    assert.throws(
+      () => buildConfig({ DISCORD_BOT_TOKEN: BOT_TOKEN, DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID }),
+      (error) => {
+        assert.ok(error instanceof ConfigError);
+        assert.match(error.message, /TIKTOK_USERNAME wajib diisi/);
+        return true;
+      },
+    );
   });
 
-  it('gagal kalau tidak ada fitur apa pun yang aktif (webhook maupun welcome)', () => {
+  it('gagal kalau tidak ada fitur apa pun yang aktif', () => {
     assert.throws(() => buildConfig({ TIKTOK_USERNAME: 'someone' }), {
       message: /Tidak ada fitur yang aktif/,
     });
@@ -46,41 +54,42 @@ describe('buildConfig', () => {
     } catch (error) {
       assert.match(error.message, /TIKTOK_USERNAME/);
       assert.match(error.message, /CHECK_INTERVAL/);
-      assert.match(error.message, /DISCORD_LIVE_WEBHOOK_URL/);
+      assert.match(error.message, /Tidak ada fitur yang aktif/);
     }
   });
 
-  it('satu webhook saja tetap boleh; fitur lainnya dimatikan dengan peringatan', () => {
+  it('satu channel saja tetap boleh; fitur lainnya dimatikan dengan peringatan', () => {
     const config = buildConfig({
       TIKTOK_USERNAME: 'someone',
-      DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE,
+      DISCORD_BOT_TOKEN: BOT_TOKEN,
+      DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID,
     });
 
     assert.equal(config.liveEnabled, true);
     assert.equal(config.contentEnabled, false);
-    assert.ok(config.warnings.some((w) => w.includes('DISCORD_CONTENT_WEBHOOK_URL')));
+    assert.ok(config.warnings.some((w) => w.includes('DISCORD_CONTENT_CHANNEL_ID')));
   });
 
-  it('menolak URL webhook yang bukan milik Discord', () => {
+  it('menolak channel id yang bukan snowflake valid', () => {
     assert.throws(
       () =>
         buildConfig({
           TIKTOK_USERNAME: 'someone',
-          DISCORD_LIVE_WEBHOOK_URL: 'https://evil.example.com/api/webhooks/1/token',
+          DISCORD_BOT_TOKEN: BOT_TOKEN,
+          DISCORD_LIVE_CHANNEL_ID: 'bukan-angka',
         }),
-      { message: /harus mengarah ke domain discord\.com/ },
+      { message: /DISCORD_LIVE_CHANNEL_ID harus berupa Discord snowflake id/ },
     );
   });
 
-  it('menolak webhook yang formatnya salah', () => {
-    assert.throws(
-      () =>
-        buildConfig({
-          TIKTOK_USERNAME: 'someone',
-          DISCORD_LIVE_WEBHOOK_URL: 'https://discord.com/api/webhooks/bukan-angka/token',
-        }),
-      { message: /formatnya salah/ },
-    );
+  it('channel sudah diisi tapi bot token kosong -- error spesifik, bukan cuma "tidak ada fitur aktif"', () => {
+    try {
+      buildConfig({ TIKTOK_USERNAME: 'someone', DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID });
+      assert.fail('seharusnya melempar error');
+    } catch (error) {
+      assert.match(error.message, /DISCORD_BOT_TOKEN wajib diisi/);
+      assert.doesNotMatch(error.message, /Tidak ada fitur yang aktif/);
+    }
   });
 
   it('menolak CHECK_INTERVAL di bawah batas minimum', () => {
@@ -88,7 +97,8 @@ describe('buildConfig', () => {
       () =>
         buildConfig({
           TIKTOK_USERNAME: 'someone',
-          DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE,
+          DISCORD_BOT_TOKEN: BOT_TOKEN,
+          DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID,
           CHECK_INTERVAL: '1000',
         }),
       { message: new RegExp(`CHECK_INTERVAL minimal ${MIN_CHECK_INTERVAL}`) },
@@ -100,7 +110,8 @@ describe('buildConfig', () => {
       () =>
         buildConfig({
           TIKTOK_USERNAME: 'someone',
-          DISCORD_CONTENT_WEBHOOK_URL: VALID_CONTENT,
+          DISCORD_BOT_TOKEN: BOT_TOKEN,
+          DISCORD_CONTENT_CHANNEL_ID: CONTENT_CHANNEL_ID,
           TIKTOK_CONTENT_PROVIDER: 'official',
         }),
       { message: /TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_REFRESH_TOKEN/ },
@@ -110,88 +121,96 @@ describe('buildConfig', () => {
   it('membersihkan username yang ditulis sebagai @user atau URL lengkap', () => {
     const fromUrl = buildConfig({
       TIKTOK_USERNAME: 'https://www.tiktok.com/@someone',
-      DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE,
+      DISCORD_BOT_TOKEN: BOT_TOKEN,
+      DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID,
     });
     assert.equal(fromUrl.username, 'someone');
 
     const fromAt = buildConfig({
       TIKTOK_USERNAME: '  @someone  ',
-      DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE,
+      DISCORD_BOT_TOKEN: BOT_TOKEN,
+      DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID,
     });
     assert.equal(fromAt.username, 'someone');
-  });
-
-  it('membuang query string dari URL webhook', () => {
-    const config = buildConfig({
-      TIKTOK_USERNAME: 'someone',
-      DISCORD_LIVE_WEBHOOK_URL: `${VALID_LIVE}?wait=true`,
-    });
-    assert.equal(config.discord.liveWebhookUrl, VALID_LIVE);
   });
 });
 
 describe('buildConfig — welcome member', () => {
-  const GUILD_ID = '123456789012345678';
-  const CHANNEL_ID = '876543210987654321';
-
   it('nonaktif secara default, dengan WARN', () => {
-    const config = buildConfig({ TIKTOK_USERNAME: 'someone', DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE });
-    assert.equal(config.welcomeEnabled, false);
-    assert.ok(config.warnings.some((w) => w.includes('DISCORD_BOT_TOKEN')));
-  });
-
-  it('aktif kalau ketiga variable diisi', () => {
     const config = buildConfig({
       TIKTOK_USERNAME: 'someone',
-      DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE,
-      DISCORD_BOT_TOKEN: 'bot-token-rahasia',
+      DISCORD_BOT_TOKEN: BOT_TOKEN,
+      DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID,
+    });
+    assert.equal(config.welcomeEnabled, false);
+    assert.ok(config.warnings.some((w) => w.includes('DISCORD_GUILD_ID')));
+  });
+
+  it('aktif kalau bot token + guild id + welcome channel id diisi', () => {
+    const config = buildConfig({
+      TIKTOK_USERNAME: 'someone',
+      DISCORD_BOT_TOKEN: BOT_TOKEN,
+      DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID,
       DISCORD_GUILD_ID: GUILD_ID,
-      DISCORD_WELCOME_CHANNEL_ID: CHANNEL_ID,
+      DISCORD_WELCOME_CHANNEL_ID: WELCOME_CHANNEL_ID,
     });
     assert.equal(config.welcomeEnabled, true);
     assert.equal(config.welcome.guildId, GUILD_ID);
-    assert.equal(config.welcome.channelId, CHANNEL_ID);
+    assert.equal(config.welcome.channelId, WELCOME_CHANNEL_ID);
   });
 
-  it('menolak kalau cuma sebagian variable welcome diisi', () => {
+  it('menolak kalau cuma salah satu dari guild id / welcome channel id diisi', () => {
     assert.throws(
       () =>
         buildConfig({
           TIKTOK_USERNAME: 'someone',
-          DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE,
-          DISCORD_BOT_TOKEN: 'bot-token-rahasia',
-          // GUILD_ID dan WELCOME_CHANNEL_ID sengaja tidak diisi
+          DISCORD_BOT_TOKEN: BOT_TOKEN,
+          DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID,
+          DISCORD_GUILD_ID: GUILD_ID,
+          // DISCORD_WELCOME_CHANNEL_ID sengaja tidak diisi
         }),
-      { message: /butuh KETIGA variable ini diisi bersamaan/ },
+      { message: /harus diisi bersamaan untuk fitur welcome member/ },
     );
   });
 
-  it('menolak guild id / channel id yang bukan snowflake valid', () => {
+  it('menolak guild id yang bukan snowflake valid', () => {
     assert.throws(
       () =>
         buildConfig({
           TIKTOK_USERNAME: 'someone',
-          DISCORD_LIVE_WEBHOOK_URL: VALID_LIVE,
-          DISCORD_BOT_TOKEN: 'x',
+          DISCORD_BOT_TOKEN: BOT_TOKEN,
           DISCORD_GUILD_ID: 'bukan-angka',
-          DISCORD_WELCOME_CHANNEL_ID: CHANNEL_ID,
+          DISCORD_WELCOME_CHANNEL_ID: WELCOME_CHANNEL_ID,
         }),
       { message: /DISCORD_GUILD_ID harus berupa Discord snowflake id/ },
     );
   });
 
-  it('aplikasi tetap boleh jalan hanya dengan welcome, tanpa webhook TikTok apa pun', () => {
-    // Dicek di index.js, bukan di buildConfig -- tapi buildConfig sendiri
-    // tidak boleh memaksa webhook TikTok terisi kalau tujuannya cuma welcome.
+  it('aplikasi tetap boleh jalan hanya dengan welcome, tanpa LIVE/konten sama sekali', () => {
     const config = buildConfig({
       TIKTOK_USERNAME: 'someone',
-      DISCORD_BOT_TOKEN: 'x',
+      DISCORD_BOT_TOKEN: BOT_TOKEN,
       DISCORD_GUILD_ID: GUILD_ID,
-      DISCORD_WELCOME_CHANNEL_ID: CHANNEL_ID,
+      DISCORD_WELCOME_CHANNEL_ID: WELCOME_CHANNEL_ID,
     });
     assert.equal(config.welcomeEnabled, true);
     assert.equal(config.liveEnabled, false);
     assert.equal(config.contentEnabled, false);
+  });
+
+  it('satu Bot Token dipakai bersama untuk LIVE, konten, dan welcome', () => {
+    const config = buildConfig({
+      TIKTOK_USERNAME: 'someone',
+      DISCORD_BOT_TOKEN: BOT_TOKEN,
+      DISCORD_LIVE_CHANNEL_ID: LIVE_CHANNEL_ID,
+      DISCORD_CONTENT_CHANNEL_ID: CONTENT_CHANNEL_ID,
+      DISCORD_GUILD_ID: GUILD_ID,
+      DISCORD_WELCOME_CHANNEL_ID: WELCOME_CHANNEL_ID,
+    });
+    assert.equal(config.liveEnabled, true);
+    assert.equal(config.contentEnabled, true);
+    assert.equal(config.welcomeEnabled, true);
+    assert.equal(config.discord.botToken, BOT_TOKEN);
   });
 });
 
