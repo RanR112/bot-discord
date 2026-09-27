@@ -30,6 +30,7 @@
   "liveMessageId": null,
   "lastLiveUpdateAt": null,
   "lastViewerCount": null,
+  "lastTotalViewers": null,
   "knownMemberIds": [
     "408785106942164992",
     "411916947773587456",
@@ -57,5 +58,5 @@
     "412347257233604609"
   ],
   "memberBootstrapped": true,
-  "lastCheckedAt": "2026-09-27T19:05:19.630Z"
+  "lastCheckedAt": "2026-09-27T19:12:15.183Z"
 }
