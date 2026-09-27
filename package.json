@@ -1,5 +1,5 @@
 {
-  "name": "tiktok-discord-notifier",
+  "name": "bot-discord",
   "version": "1.0.0",
   "description": "Notifikasi Discord otomatis untuk TikTok LIVE dan upload konten baru.",
   "type": "module",

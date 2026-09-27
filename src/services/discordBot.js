@@ -35,7 +35,7 @@ const MEMBERS_PAGE_SIZE = 1000;
  * default itu supaya request ke Discord selalu jujur.
  */
 const DISCORD_USER_AGENT =
-  'DiscordBot (https://github.com/RanR112/tiktok-discord-notifier, 1.0.0)';
+  'DiscordBot (https://github.com/RanR112/bot-discord, 1.0.0)';
 
 /**
  * Membentuk URL avatar CDN Discord, dengan fallback ke default avatar kalau

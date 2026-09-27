@@ -32,7 +32,7 @@ async function main() {
   setLogLevel(config.logLevel);
 
   logger.info('=================================================');
-  logger.info(' tiktok-discord-notifier');
+  logger.info(' bot-discord');
   logger.info('=================================================');
   logger.info(envLoaded ? 'File .env dimuat.' : 'Tidak ada file .env; memakai environment proses.');
   logger.info(`Akun dipantau      : @${config.username}`);
