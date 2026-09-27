@@ -18,6 +18,7 @@
  * @property {string|null}   liveMessageId       Id pesan Discord untuk sesi LIVE saat ini (dipakai untuk edit).
  * @property {string|null}   lastLiveUpdateAt    ISO timestamp update penonton terakhir.
  * @property {number|null}   lastViewerCount     Jumlah penonton pada update terakhir.
+ * @property {number|null}   lastTotalViewers    Snapshot totalViewers terakhir sebelum sesi berakhir (BEST-EFFORT).
  * @property {string[]}      knownMemberIds      SEMUA id member server yang pernah tercatat (tidak dibatasi ukuran).
  * @property {boolean}       memberBootstrapped  Sudah pernah sinkron awal? Kalau belum, siklus pertama hanya merekam.
  * @property {string|null}   lastCheckedAt       ISO timestamp siklus pengecekan terakhir.
@@ -32,7 +33,8 @@
  * @property {boolean}      isLive
  * @property {string|null}  liveId      roomId TikTok; pembeda antar sesi LIVE.
  * @property {string|null}  title
- * @property {number|null}  viewers
+ * @property {number|null}  viewers       Penonton bersamaan saat ini (snapshot sesaat).
+ * @property {number|null}  [totalViewers] Total kumulatif orang yang masuk room selama sesi ini (BEST-EFFORT, lihat catatan di liveProvider.js).
  * @property {string}       url
  * @property {string|null}  thumbnail
  * @property {string|null}  startedAt   ISO-8601.

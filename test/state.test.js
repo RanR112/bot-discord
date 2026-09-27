@@ -26,6 +26,7 @@ describe('normalizeState', () => {
       knownContentIds: ['a', 7, '', 'b'],
       lastLiveStatus: 'true',
       lastViewerCount: 'banyak',
+      lastTotalViewers: 'banyak sekali',
       hackerField: 'boom',
     });
 
@@ -33,7 +34,13 @@ describe('normalizeState', () => {
     assert.deepEqual(result.knownContentIds, ['a', 'b'], 'entri non-string dibuang');
     assert.equal(result.lastLiveStatus, false, 'hanya boolean true yang dihitung live');
     assert.equal(result.lastViewerCount, null);
+    assert.equal(result.lastTotalViewers, null);
     assert.equal('hackerField' in result, false);
+  });
+
+  it('lastTotalViewers menerima angka valid dan bertahan lewat round-trip', () => {
+    const result = normalizeState({ lastTotalViewers: 98765 });
+    assert.equal(result.lastTotalViewers, 98765);
   });
 
   it('memperlakukan state lama tanpa flag bootstrap sebagai sudah ter-bootstrap', () => {

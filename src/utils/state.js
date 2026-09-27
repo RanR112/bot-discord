@@ -32,6 +32,10 @@ export function createDefaultState() {
     liveMessageId: null,
     lastLiveUpdateAt: null,
     lastViewerCount: null,
+    // Snapshot terakhir dari totalViewers (enterCount, BEST-EFFORT -- lihat
+    // liveProvider.js) selagi sesi masih berlangsung. Dipakai saat sesi
+    // berakhir karena begitu isLive=false, TikTok tidak lagi memberi angka ini.
+    lastTotalViewers: null,
 
     // --- Welcome member ---
     // TIDAK dibatasi ring buffer seperti knownContentIds: harus tetap memuat
@@ -90,6 +94,10 @@ export function normalizeState(raw) {
     lastViewerCount:
       typeof input.lastViewerCount === 'number' && Number.isFinite(input.lastViewerCount)
         ? input.lastViewerCount
+        : null,
+    lastTotalViewers:
+      typeof input.lastTotalViewers === 'number' && Number.isFinite(input.lastTotalViewers)
+        ? input.lastTotalViewers
         : null,
     knownMemberIds,
     memberBootstrapped:

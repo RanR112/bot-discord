@@ -201,6 +201,7 @@ export class LiveMonitor {
       liveMessageId: result?.id ?? null,
       lastLiveUpdateAt: new Date().toISOString(),
       lastViewerCount: status.viewers,
+      lastTotalViewers: status.totalViewers,
     });
   }
 
@@ -215,6 +216,13 @@ export class LiveMonitor {
     await this.store.update({
       lastLiveUpdateAt: new Date().toISOString(),
       lastViewerCount: status.viewers,
+      // enterCount TikTok cuma naik (kumulatif), tapi tetap dijaga dengan
+      // Math.max untuk berjaga-jaga kalau satu polling kebetulan dapat nilai
+      // lebih kecil/null -- jangan sampai angka yang sudah tercatat mundur.
+      lastTotalViewers:
+        status.totalViewers != null
+          ? Math.max(status.totalViewers, state.lastTotalViewers ?? 0)
+          : state.lastTotalViewers,
       // Kalau pesan sudah tidak ada (dihapus manual), berhenti mencoba mengeditnya.
       liveMessageId: updated ? state.liveMessageId : null,
     });
@@ -242,6 +250,7 @@ export class LiveMonitor {
           // berbasis polling). Dipakai discordNotifier.js untuk hitung durasi.
           endedAt: new Date().toISOString(),
           viewers: state.lastViewerCount,
+          totalViewers: state.lastTotalViewers,
         },
         { ended: true },
       );
@@ -254,6 +263,7 @@ export class LiveMonitor {
       liveMessageId: null,
       lastLiveUpdateAt: null,
       lastViewerCount: null,
+      lastTotalViewers: null,
     });
   }
 }

@@ -55,6 +55,7 @@ export function parseLiveRoomPayload(payload, username) {
       liveId: null,
       title: null,
       viewers: null,
+      totalViewers: null,
       url,
       thumbnail: null,
       startedAt: null,
@@ -65,6 +66,14 @@ export function parseLiveRoomPayload(payload, username) {
   const stats = room.liveRoomStats ?? {};
   const viewers =
     typeof stats.userCount === 'number' && Number.isFinite(stats.userCount) ? stats.userCount : null;
+  // `enterCount` -- BEST-EFFORT: berdasarkan satu contoh nyata saat riset awal
+  // (akun LIVE dengan userCount=1 tapi enterCount=2638), field ini kemungkinan
+  // besar total kumulatif orang yang pernah masuk room, bukan snapshot sesaat.
+  // Belum ada dokumentasi resmi TikTok yang mengonfirmasi ini -- kalau
+  // ternyata salah/berubah, cukup null-kan field ini, tidak ada tempat lain
+  // di kode yang bergantung padanya.
+  const totalViewers =
+    typeof stats.enterCount === 'number' && Number.isFinite(stats.enterCount) ? stats.enterCount : null;
 
   return {
     username,
@@ -76,6 +85,7 @@ export function parseLiveRoomPayload(payload, username) {
       null,
     title: typeof room.title === 'string' && room.title.trim() !== '' ? room.title.trim() : null,
     viewers,
+    totalViewers,
     url,
     thumbnail: safeUrl(room.coverUrl ?? room.squareCoverImg),
     startedAt: toIsoTimestamp(room.startTime),

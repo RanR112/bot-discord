@@ -85,6 +85,35 @@ describe('buildLiveEmbed', () => {
     assert.match(durasi.value, /^\d{2,}:\d{2}:\d{2}$/);
   });
 
+  it('saat masih LIVE: field "Viewers" tampil (bukan "Total Viewers"), walau totalViewers ada', () => {
+    const embed = buildLiveEmbed({ ...data, viewers: 500, totalViewers: 9999 });
+    const field = embed.fields.find((f) => f.name.includes('Viewers'));
+    assert.equal(field.name, '👁️ Viewers');
+    assert.equal(field.value, '500');
+    assert.equal(embed.fields.some((f) => f.name.includes('Total Viewers')), false);
+  });
+
+  it('saat sudah berakhir dengan totalViewers tersedia: "Viewers" diganti "Total Viewers"', () => {
+    const embed = buildLiveEmbed({ ...data, viewers: 500, totalViewers: 9999 }, { ended: true });
+    const field = embed.fields.find((f) => f.name.includes('Viewers'));
+    assert.equal(field.name, '👁️ Total Viewers');
+    assert.equal(field.value, '9,999');
+    // Cuma satu field viewers, bukan dua (Viewers biasa tidak boleh nyisa).
+    assert.equal(embed.fields.filter((f) => f.name.includes('Viewers')).length, 1);
+  });
+
+  it('saat sudah berakhir tapi totalViewers TIDAK tersedia: fallback ke Viewers biasa', () => {
+    const embed = buildLiveEmbed({ ...data, viewers: 500, totalViewers: null }, { ended: true });
+    const field = embed.fields.find((f) => f.name.includes('Viewers'));
+    assert.equal(field.name, '👁️ Viewers');
+    assert.equal(field.value, '500');
+  });
+
+  it('saat sudah berakhir dan keduanya tidak tersedia: field viewers dihilangkan sepenuhnya', () => {
+    const embed = buildLiveEmbed({ ...data, viewers: null, totalViewers: null }, { ended: true });
+    assert.equal(embed.fields.some((f) => f.name.includes('Viewers')), false);
+  });
+
   it('menghilangkan field yang datanya tidak tersedia, bukan menulis nol palsu', () => {
     const embed = buildLiveEmbed({ ...data, title: null, viewers: null, thumbnail: null });
     const names = embed.fields.map((f) => f.name);

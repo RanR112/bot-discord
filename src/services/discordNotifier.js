@@ -106,6 +106,26 @@ function timeField(data, ended) {
 }
 
 /**
+ * Field jumlah penonton: "Viewers" (penonton bersamaan saat ini) selagi
+ * masih LIVE, berganti jadi "Total Viewers" (kumulatif selama sesi,
+ * BEST-EFFORT -- lihat catatan di liveProvider.js) begitu sesi berakhir.
+ * Kalau totalViewers tidak tersedia saat ended (mis. TikTok mengubah
+ * struktur data), fallback ke `viewers` biasa daripada menghilangkan field
+ * ini sepenuhnya -- info penonton terakhir tetap lebih baik daripada tidak ada.
+ *
+ * @param {import('../types.js').LiveStatus} data
+ * @param {boolean} ended
+ * @returns {{ name: string, value: string, inline: boolean } | null}
+ */
+function viewersField(data, ended) {
+  if (ended) {
+    const total = formatNumber(data.totalViewers);
+    if (total) return { name: '👁️ Total Viewers', value: total, inline: true };
+  }
+  return statField('👁️ Viewers', formatNumber(data.viewers));
+}
+
+/**
  * Menyusun embed untuk notifikasi LIVE.
  *
  * @param {import('../types.js').LiveStatus} data
@@ -115,7 +135,6 @@ export function buildLiveEmbed(data, options = {}) {
   const { ended = false } = options;
   const displayName = data.displayName || data.username;
   const url = safeUrl(data.url);
-  const viewers = formatNumber(data.viewers);
 
   const descriptionLines = [
     ended
@@ -138,7 +157,7 @@ export function buildLiveEmbed(data, options = {}) {
     },
     fields: [
       data.title ? { name: 'Title', value: truncate(data.title, LIMITS.fieldValue), inline: false } : null,
-      statField('👁️ Viewers', viewers),
+      viewersField(data, ended),
       timeField(data, ended),
       url ? { name: '🔗 Link', value: `[Watch LIVE](${url})`, inline: false } : null,
     ].filter(Boolean),

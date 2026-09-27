@@ -46,6 +46,7 @@ describe('parseLiveRoomPayload', () => {
     assert.equal(result.liveId, null);
     assert.equal(result.title, null, 'judul siaran lama tidak boleh bocor');
     assert.equal(result.viewers, null);
+    assert.equal(result.totalViewers, null);
     assert.equal(result.displayName, 'TikTok');
   });
 
@@ -64,12 +65,13 @@ describe('parseLiveRoomPayload', () => {
           title: 'Judul Live',
           startTime: 1789602913,
           coverUrl: 'https://p16-webcast.tiktokcdn.com/cover.jpg',
-          liveRoomStats: { userCount: 4321 },
+          liveRoomStats: { userCount: 4321, enterCount: 98765 },
         },
       },
     };
 
     const result = parseLiveRoomPayload(payload, 'someone');
+    assert.equal(result.totalViewers, 98765, 'enterCount dipetakan ke totalViewers');
     assert.equal(result.isLive, true);
     assert.equal(result.liveId, 'room-A');
     assert.equal(result.title, 'Judul Live');
@@ -84,6 +86,7 @@ describe('parseLiveRoomPayload', () => {
     assert.equal(result.isLive, true);
     assert.equal(result.title, null);
     assert.equal(result.viewers, null);
+    assert.equal(result.totalViewers, null);
     assert.equal(result.liveId, null);
   });
 });
@@ -245,6 +248,7 @@ describe('LiveMonitor.check — mengirim endedAt saat sesi berakhir', () => {
       liveStartedAt: '2026-09-25T10:00:00.000Z',
       liveMessageId: 'msg-1',
       lastViewerCount: 500,
+      lastTotalViewers: 12_345,
     });
 
     const monitor = new LiveMonitor({
@@ -262,12 +266,47 @@ describe('LiveMonitor.check — mengirim endedAt saat sesi berakhir', () => {
     assert.equal(updateCalls.length, 1);
     assert.equal(updateCalls[0].options.ended, true);
     assert.equal(updateCalls[0].data.startedAt, '2026-09-25T10:00:00.000Z');
+    assert.equal(updateCalls[0].data.totalViewers, 12_345, 'snapshot terakhir totalViewers ikut terkirim');
 
     const endedAtMs = Date.parse(updateCalls[0].data.endedAt);
     assert.ok(Number.isFinite(endedAtMs), 'endedAt harus ISO string yang valid');
     assert.ok(
       endedAtMs >= before && endedAtMs <= after,
       'endedAt harus mencatat waktu terdeteksinya berakhir, bukan waktu lain',
+    );
+    assert.equal(store.get().lastTotalViewers, null, 'direset setelah sesi berakhir');
+  });
+
+  it('lastTotalViewers naik terus (Math.max) walau satu polling dapat angka lebih kecil', async () => {
+    const tiktok = { getLiveStatus: async () => liveStatus({ viewers: 100, totalViewers: 50 }) };
+    const discord = {
+      sendLiveNotification: async () => ({ id: 'msg-1' }),
+      updateLiveNotification: async () => true,
+    };
+    const store = memoryStore({
+      currentLiveId: 'room-A',
+      lastLiveStatus: true,
+      liveStartedAt: '2026-09-25T10:00:00.000Z',
+      liveMessageId: 'msg-1',
+      lastLiveUpdateAt: '2026-09-25T09:00:00.000Z', // lewat interval, supaya action = 'update'
+      lastViewerCount: 999, // beda dari viewers baru (100), supaya action = 'update' terpicu
+      lastTotalViewers: 9_000, // sudah lebih tinggi dari totalViewers baru (50) yang "aneh"
+    });
+
+    const monitor = new LiveMonitor({
+      tiktok,
+      discord,
+      store,
+      config: { username: 'someone', liveUpdateInterval: 300_000 },
+      logger: silentLogger,
+    });
+
+    await monitor.check();
+
+    assert.equal(
+      store.get().lastTotalViewers,
+      9_000,
+      'angka yang sudah tercatat tidak boleh mundur walau polling terbaru lebih kecil',
     );
   });
 });
