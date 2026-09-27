@@ -58,6 +58,25 @@ export function toIsoTimestamp(value) {
 }
 
 /**
+ * Mengubah durasi dalam milliseconds jadi teks "JJ:MM:DD" (jam:menit:detik),
+ * dua digit tiap bagian (jam boleh lebih dari 2 digit kalau memang >99 jam).
+ * Mengembalikan null kalau nilainya tidak valid, supaya pemanggil bisa
+ * menghilangkan field-nya alih-alih menampilkan durasi yang salah.
+ *
+ * @param {unknown} ms
+ * @returns {string | null}
+ */
+export function formatDuration(ms) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) return null;
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+/**
  * Memastikan sebuah URL aman dipakai di embed (hanya http/https). Discord
  * menolak SELURUH payload kalau ada satu URL tidak valid, jadi lebih baik
  * disaring lebih dulu di sini.

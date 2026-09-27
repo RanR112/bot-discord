@@ -36,6 +36,7 @@
  * @property {string}       url
  * @property {string|null}  thumbnail
  * @property {string|null}  startedAt   ISO-8601.
+ * @property {string|null}  [endedAt]   ISO-8601. Hanya diisi saat sesi berakhir (dipakai untuk hitung durasi).
  * @property {string|null}  avatar
  */
 

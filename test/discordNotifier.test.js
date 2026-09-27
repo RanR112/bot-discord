@@ -53,6 +53,38 @@ describe('buildLiveEmbed', () => {
     assert.match(embed.description, /selesai LIVE/);
   });
 
+  it('saat masih LIVE: field "Mulai" berisi timestamp relatif Discord', () => {
+    const embed = buildLiveEmbed(data);
+    const field = embed.fields.find((f) => f.name.includes('Mulai'));
+    assert.ok(field, 'field Mulai harus ada saat masih LIVE');
+    assert.equal(
+      field.value,
+      `<t:${Math.floor(new Date(data.startedAt).getTime() / 1000)}:R>`,
+    );
+    assert.equal(embed.fields.some((f) => f.name.includes('Durasi')), false);
+  });
+
+  it('saat sudah berakhir: field "Mulai" diganti "Durasi" berformat JJ:MM:DD', () => {
+    const embed = buildLiveEmbed(
+      { ...data, endedAt: '2026-09-25T11:30:45.000Z' }, // 1j 30m 45d setelah startedAt 10:00:00
+      { ended: true },
+    );
+    const durasi = embed.fields.find((f) => f.name.includes('Durasi'));
+    assert.ok(durasi, 'field Durasi harus ada saat sudah berakhir');
+    assert.equal(durasi.value, '01:30:45');
+    assert.equal(embed.fields.some((f) => f.name.includes('Mulai')), false, 'field Mulai tidak boleh tersisa');
+  });
+
+  it('tetap menampilkan Durasi (fallback ke waktu sekarang) walau endedAt tidak disuplai', () => {
+    // Jaring pengaman: seharusnya tidak pernah terjadi lewat liveMonitor.js
+    // (selalu mengirim endedAt), tapi kalau terjadi, field tetap tampil
+    // daripada hilang tanpa penjelasan.
+    const embed = buildLiveEmbed(data, { ended: true });
+    const durasi = embed.fields.find((f) => f.name.includes('Durasi'));
+    assert.ok(durasi);
+    assert.match(durasi.value, /^\d{2,}:\d{2}:\d{2}$/);
+  });
+
   it('menghilangkan field yang datanya tidak tersedia, bukan menulis nol palsu', () => {
     const embed = buildLiveEmbed({ ...data, title: null, viewers: null, thumbnail: null });
     const names = embed.fields.map((f) => f.name);

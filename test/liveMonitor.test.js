@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { decideLiveAction, resolveLiveId } from '../src/monitors/liveMonitor.js';
+import { LiveMonitor, decideLiveAction, resolveLiveId } from '../src/monitors/liveMonitor.js';
 import { parseLiveRoomPayload } from '../src/services/tiktok/liveProvider.js';
-import { createDefaultState } from '../src/utils/state.js';
+import { StateStore, createDefaultState } from '../src/utils/state.js';
 
 /** @param {Partial<import('../src/types.js').LiveStatus>} [overrides] */
 function liveStatus(overrides = {}) {
@@ -216,5 +216,58 @@ describe('decideLiveAction — update jumlah penonton', () => {
       { now, liveUpdateInterval: 0 },
     );
     assert.equal(decision.action, 'notify');
+  });
+});
+
+describe('LiveMonitor.check — mengirim endedAt saat sesi berakhir', () => {
+  const silentLogger = { info() {}, warn() {}, error() {}, debug() {}, child: () => silentLogger };
+
+  function memoryStore(initial = {}) {
+    const store = new StateStore('/tmp/unused-live-state.json');
+    store.state = { ...createDefaultState(), ...initial };
+    store.save = async () => {};
+    return store;
+  }
+
+  it('meng-update pesan dengan endedAt (ISO string) begitu LIVE terdeteksi berakhir', async () => {
+    const updateCalls = [];
+    const tiktok = { getLiveStatus: async () => liveStatus({ isLive: false, liveId: null }) };
+    const discord = {
+      sendLiveNotification: async () => ({ id: 'msg-1' }),
+      updateLiveNotification: async (messageId, data, options) => {
+        updateCalls.push({ messageId, data, options });
+        return true;
+      },
+    };
+    const store = memoryStore({
+      currentLiveId: 'room-A',
+      lastLiveStatus: true,
+      liveStartedAt: '2026-09-25T10:00:00.000Z',
+      liveMessageId: 'msg-1',
+      lastViewerCount: 500,
+    });
+
+    const monitor = new LiveMonitor({
+      tiktok,
+      discord,
+      store,
+      config: { username: 'someone', liveUpdateInterval: 300_000 },
+      logger: silentLogger,
+    });
+
+    const before = Date.now();
+    await monitor.check();
+    const after = Date.now();
+
+    assert.equal(updateCalls.length, 1);
+    assert.equal(updateCalls[0].options.ended, true);
+    assert.equal(updateCalls[0].data.startedAt, '2026-09-25T10:00:00.000Z');
+
+    const endedAtMs = Date.parse(updateCalls[0].data.endedAt);
+    assert.ok(Number.isFinite(endedAtMs), 'endedAt harus ISO string yang valid');
+    assert.ok(
+      endedAtMs >= before && endedAtMs <= after,
+      'endedAt harus mencatat waktu terdeteksinya berakhir, bukan waktu lain',
+    );
   });
 });

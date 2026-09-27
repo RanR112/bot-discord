@@ -237,6 +237,10 @@ export class LiveMonitor {
           ...status,
           title: status.title,
           startedAt: state.liveStartedAt,
+          // Momen TERDETEKSINYA berakhir (bukan momen persisnya TikTok
+          // menutup siaran -- itu tidak diketahui karena sistem ini
+          // berbasis polling). Dipakai discordNotifier.js untuk hitung durasi.
+          endedAt: new Date().toISOString(),
           viewers: state.lastViewerCount,
         },
         { ended: true },

@@ -13,7 +13,7 @@
  * (LIVE, konten, welcome) tanpa perlu mengelola beberapa webhook terpisah.
  */
 
-import { formatNumber, safeUrl, toIsoTimestamp, truncate } from '../utils/format.js';
+import { formatDuration, formatNumber, safeUrl, toIsoTimestamp, truncate } from '../utils/format.js';
 
 /** Merah khas TikTok — dipakai untuk LIVE. */
 export const COLOR_LIVE = 0xfe2c55;
@@ -75,6 +75,37 @@ function statField(name, value) {
 }
 
 /**
+ * Field waktu pada embed LIVE: "Mulai" (relatif, mis. "12 minutes ago") saat
+ * sesi masih berlangsung, berganti jadi "Durasi" (JJ:MM:DD) begitu sesi
+ * berakhir. Durasi dihitung dari `startedAt` sampai `endedAt` -- `endedAt`
+ * WAJIB disuplai pemanggil (liveMonitor.js, saat mendeteksi sesi berakhir)
+ * supaya fungsi ini tetap murni/testable, tidak diam-diam memanggil
+ * `Date.now()` sendiri. Kalau `ended: true` tapi `endedAt` tidak disuplai
+ * (seharusnya tidak pernah terjadi lewat jalur normal), fallback ke waktu
+ * saat ini sebagai jaring pengaman -- field durasi tetap tampil daripada hilang.
+ *
+ * @param {import('../types.js').LiveStatus} data
+ * @param {boolean} ended
+ * @returns {{ name: string, value: string, inline: boolean } | null}
+ */
+function timeField(data, ended) {
+  if (!data.startedAt) return null;
+
+  if (!ended) {
+    return {
+      name: '⏱️ Mulai',
+      value: `<t:${Math.floor(new Date(data.startedAt).getTime() / 1000)}:R>`,
+      inline: true,
+    };
+  }
+
+  const startedAtMs = new Date(data.startedAt).getTime();
+  const endedAtMs = data.endedAt ? new Date(data.endedAt).getTime() : Date.now();
+  const duration = formatDuration(endedAtMs - startedAtMs);
+  return duration ? { name: '⏱️ Durasi', value: duration, inline: true } : null;
+}
+
+/**
  * Menyusun embed untuk notifikasi LIVE.
  *
  * @param {import('../types.js').LiveStatus} data
@@ -108,13 +139,7 @@ export function buildLiveEmbed(data, options = {}) {
     fields: [
       data.title ? { name: 'Title', value: truncate(data.title, LIMITS.fieldValue), inline: false } : null,
       statField('👁️ Viewers', viewers),
-      data.startedAt
-        ? {
-            name: '⏱️ Mulai',
-            value: `<t:${Math.floor(new Date(data.startedAt).getTime() / 1000)}:R>`,
-            inline: true,
-          }
-        : null,
+      timeField(data, ended),
       url ? { name: '🔗 Link', value: `[Watch LIVE](${url})`, inline: false } : null,
     ].filter(Boolean),
     image: safeUrl(data.thumbnail) ? { url: safeUrl(data.thumbnail) } : null,

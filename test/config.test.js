@@ -5,7 +5,14 @@ import { MIN_CHECK_INTERVAL, buildConfig } from '../src/config.js';
 import { ConfigError } from '../src/utils/errors.js';
 import { backoffDelay, isRetryableStatus, parseRetryAfter, withRetry } from '../src/utils/http.js';
 import { HttpError } from '../src/utils/errors.js';
-import { formatNumber, normalizeUsername, safeUrl, toIsoTimestamp, truncate } from '../src/utils/format.js';
+import {
+  formatDuration,
+  formatNumber,
+  normalizeUsername,
+  safeUrl,
+  toIsoTimestamp,
+  truncate,
+} from '../src/utils/format.js';
 
 const BOT_TOKEN = 'bot-token-rahasia';
 const LIVE_CHANNEL_ID = '111111111111111111';
@@ -250,6 +257,30 @@ describe('format helpers', () => {
     assert.equal(normalizeUsername('https://www.tiktok.com/@someone/live'), 'someone');
     assert.equal(normalizeUsername('  someone  '), 'someone');
     assert.equal(normalizeUsername(undefined), '');
+  });
+
+  it('formatDuration mengubah ms jadi JJ:MM:DD, dua digit tiap bagian', () => {
+    assert.equal(formatDuration(0), '00:00:00');
+    assert.equal(formatDuration(5_000), '00:00:05');
+    assert.equal(formatDuration(65_000), '00:01:05');
+    assert.equal(formatDuration(3_661_000), '01:01:01', '1 jam 1 menit 1 detik');
+    assert.equal(formatDuration(2 * 3_600_000 + 30 * 60_000 + 45_000), '02:30:45');
+  });
+
+  it('formatDuration menangani durasi lebih dari 99 jam tanpa terpotong', () => {
+    assert.equal(formatDuration(100 * 3_600_000), '100:00:00');
+  });
+
+  it('formatDuration membulatkan ke bawah per detik (bukan dibulatkan)', () => {
+    assert.equal(formatDuration(1_999), '00:00:01');
+  });
+
+  it('formatDuration mengembalikan null untuk nilai tidak valid', () => {
+    assert.equal(formatDuration(-1), null);
+    assert.equal(formatDuration(NaN), null);
+    assert.equal(formatDuration('abc'), null);
+    assert.equal(formatDuration(null), null);
+    assert.equal(formatDuration(undefined), null);
   });
 });
 
