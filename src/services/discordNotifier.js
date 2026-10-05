@@ -241,9 +241,9 @@ export class DiscordNotifier {
     }
 
     const payload = {
-      content: `🔴 **@${data.username}** sedang LIVE!`,
+      content: `🔴 **@${data.username}** sedang LIVE! @everyone`,
       embeds: [buildLiveEmbed(data)],
-      allowed_mentions: { parse: [] },
+      allowed_mentions: { parse: ['everyone'] },
     };
 
     const result = await this.discordBot.sendChannelMessage(this.liveChannelId, payload);
@@ -303,9 +303,9 @@ export class DiscordNotifier {
     }
 
     const payload = {
-      content: `🎬 Video baru dari **@${data.username}**`,
+      content: `@everyone 🎬 Video baru dari **@${data.username}**`,
       embeds: [buildContentEmbed(data)],
-      allowed_mentions: { parse: [] },
+      allowed_mentions: { parse: ['everyone'] },
     };
 
     const result = await this.discordBot.sendChannelMessage(this.contentChannelId, payload);
