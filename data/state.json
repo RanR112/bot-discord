@@ -24,13 +24,13 @@
     "7557704101128310023"
   ],
   "contentBootstrapped": true,
-  "currentLiveId": "7695295795251137301",
-  "lastLiveStatus": true,
-  "liveStartedAt": "1970-01-01T00:00:00.000Z",
-  "liveMessageId": "1558730682258301012",
-  "lastLiveUpdateAt": "2026-10-11T06:39:14.780Z",
-  "lastViewerCount": 0,
-  "lastTotalViewers": 0,
+  "currentLiveId": null,
+  "lastLiveStatus": false,
+  "liveStartedAt": null,
+  "liveMessageId": null,
+  "lastLiveUpdateAt": null,
+  "lastViewerCount": null,
+  "lastTotalViewers": null,
   "knownMemberIds": [
     "408785106942164992",
     "411916947773587456",
@@ -63,5 +63,5 @@
     "1402592983492071649"
   ],
   "memberBootstrapped": true,
-  "lastCheckedAt": "2026-10-11T08:47:15.055Z"
+  "lastCheckedAt": "2026-10-11T08:48:15.612Z"
 }
