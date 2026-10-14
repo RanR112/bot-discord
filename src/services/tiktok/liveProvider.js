@@ -41,6 +41,17 @@ export function parseLiveRoomPayload(payload, username) {
     const user = data.user ?? {};
     const room = data.liveRoom ?? {};
 
+    console.log(
+        "DEBUG_ROOM",
+        JSON.stringify({
+            userStatus: user.status,
+            roomStatus: room.status,
+            startTime: room.startTime,
+            stats: room.liveRoomStats,
+            roomKeys: Object.keys(room),
+        }),
+    );
+
     const displayName =
         typeof user.nickname === "string" && user.nickname
             ? user.nickname
