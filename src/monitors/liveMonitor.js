@@ -20,7 +20,7 @@
  * tanpa notifikasi sama sekali di channel.
  */
 
-import { ProviderUnavailableError } from '../utils/errors.js';
+import { ProviderUnavailableError } from "../utils/errors.js";
 
 /**
  * Menentukan identitas sesi LIVE. TikTok hampir selalu memberi `roomId`;
@@ -31,10 +31,10 @@ import { ProviderUnavailableError } from '../utils/errors.js';
  * @returns {string|null}
  */
 export function resolveLiveId(status) {
-  if (!status?.isLive) return null;
-  if (status.liveId) return status.liveId;
-  if (status.startedAt) return `start:${status.startedAt}`;
-  return 'unknown-session';
+    if (!status?.isLive) return null;
+    if (status.liveId) return status.liveId;
+    if (status.startedAt) return `start:${status.startedAt}`;
+    return "unknown-session";
 }
 
 /**
@@ -47,223 +47,265 @@ export function resolveLiveId(status) {
  * @returns {{ action: 'none'|'notify'|'update'|'end', liveId: string|null, reason: string }}
  */
 export function decideLiveAction(state, status, options = {}) {
-  const { now = Date.now(), liveUpdateInterval = 0 } = options;
-  const liveId = resolveLiveId(status);
+    const { now = Date.now(), liveUpdateInterval = 0 } = options;
+    const liveId = resolveLiveId(status);
 
-  if (!status.isLive) {
-    if (state.lastLiveStatus || state.currentLiveId) {
-      return { action: 'end', liveId: null, reason: 'sesi LIVE berakhir' };
+    if (!status.isLive) {
+        if (state.lastLiveStatus || state.currentLiveId) {
+            return {
+                action: "end",
+                liveId: null,
+                reason: "sesi LIVE berakhir",
+            };
+        }
+        return { action: "none", liveId: null, reason: "tidak LIVE" };
     }
-    return { action: 'none', liveId: null, reason: 'tidak LIVE' };
-  }
 
-  if (state.currentLiveId !== liveId) {
-    return { action: 'notify', liveId, reason: 'sesi LIVE baru terdeteksi' };
-  }
+    if (state.currentLiveId !== liveId) {
+        return {
+            action: "notify",
+            liveId,
+            reason: "sesi LIVE baru terdeteksi",
+        };
+    }
 
-  // Sesi sama, tapi tidak ada pesan untuk sesi ini -- entah dihapus manual di
-  // Discord, atau pengiriman awal sempat gagal (404 saat coba di-edit).
-  // Kirim notifikasi baru lagi, terlepas dari LIVE_UPDATE_INTERVAL: channel
-  // tidak boleh dibiarkan tanpa notifikasi untuk sesi yang masih berlangsung.
-  if (!state.liveMessageId) {
-    return { action: 'notify', liveId, reason: 'pesan LIVE sebelumnya hilang, kirim ulang' };
-  }
+    // Sesi sama, tapi tidak ada pesan untuk sesi ini -- entah dihapus manual di
+    // Discord, atau pengiriman awal sempat gagal (404 saat coba di-edit).
+    // Kirim notifikasi baru lagi, terlepas dari LIVE_UPDATE_INTERVAL: channel
+    // tidak boleh dibiarkan tanpa notifikasi untuk sesi yang masih berlangsung.
+    if (!state.liveMessageId) {
+        return {
+            action: "notify",
+            liveId,
+            reason: "pesan LIVE sebelumnya hilang, kirim ulang",
+        };
+    }
 
-  if (liveUpdateInterval <= 0) {
-    return { action: 'none', liveId, reason: 'sesi sama, update penonton dinonaktifkan' };
-  }
+    if (liveUpdateInterval <= 0) {
+        return {
+            action: "none",
+            liveId,
+            reason: "sesi sama, update penonton dinonaktifkan",
+        };
+    }
 
-  const lastUpdate = state.lastLiveUpdateAt ? Date.parse(state.lastLiveUpdateAt) : 0;
-  if (Number.isFinite(lastUpdate) && now - lastUpdate < liveUpdateInterval) {
-    return { action: 'none', liveId, reason: 'sesi sama, belum waktunya update' };
-  }
-  if (status.viewers === null || status.viewers === state.lastViewerCount) {
-    return { action: 'none', liveId, reason: 'sesi sama, jumlah penonton tidak berubah' };
-  }
+    const lastUpdate = state.lastLiveUpdateAt
+        ? Date.parse(state.lastLiveUpdateAt)
+        : 0;
+    if (Number.isFinite(lastUpdate) && now - lastUpdate < liveUpdateInterval) {
+        return {
+            action: "none",
+            liveId,
+            reason: "sesi sama, belum waktunya update",
+        };
+    }
+    if (status.viewers === null || status.viewers === state.lastViewerCount) {
+        return {
+            action: "none",
+            liveId,
+            reason: "sesi sama, jumlah penonton tidak berubah",
+        };
+    }
 
-  return { action: 'update', liveId, reason: 'jumlah penonton berubah' };
+    return { action: "update", liveId, reason: "jumlah penonton berubah" };
 }
 
 export class LiveMonitor {
-  /**
-   * @param {{
-   *   tiktok: import('../services/tiktok.js').TikTokService,
-   *   discord: import('../services/discord.js').DiscordService,
-   *   store: import('../utils/state.js').StateStore,
-   *   config: any,
-   *   logger: ReturnType<typeof import('../utils/logger.js').createLogger>,
-   * }} options
-   */
-  constructor({ tiktok, discord, store, config, logger }) {
-    this.tiktok = tiktok;
-    this.discord = discord;
-    this.store = store;
-    this.config = config;
-    this.logger = logger;
-  }
+    /**
+     * @param {{
+     *   tiktok: import('../services/tiktok.js').TikTokService,
+     *   discord: import('../services/discord.js').DiscordService,
+     *   store: import('../utils/state.js').StateStore,
+     *   config: any,
+     *   logger: ReturnType<typeof import('../utils/logger.js').createLogger>,
+     * }} options
+     */
+    constructor({ tiktok, discord, store, config, logger }) {
+        this.tiktok = tiktok;
+        this.discord = discord;
+        this.store = store;
+        this.config = config;
+        this.logger = logger;
+    }
 
-  get name() {
-    return 'live';
-  }
+    get name() {
+        return "live";
+    }
 
-  /**
-   * Satu siklus pengecekan LIVE.
-   * Selalu resolve — error dilaporkan lewat nilai balik, bukan dilempar,
-   * supaya kegagalan di sini tidak pernah menghentikan content monitor.
-   *
-   * @returns {Promise<{ ok: boolean, action?: string, error?: Error }>}
-   */
-  async check() {
-    this.logger.info(`Mengecek status LIVE @${this.config.username}...`);
+    /**
+     * Satu siklus pengecekan LIVE.
+     * Selalu resolve — error dilaporkan lewat nilai balik, bukan dilempar,
+     * supaya kegagalan di sini tidak pernah menghentikan content monitor.
+     *
+     * @returns {Promise<{ ok: boolean, action?: string, error?: Error }>}
+     */
+    async check() {
+        this.logger.info(`Mengecek status LIVE @${this.config.username}...`);
 
-    /** @type {import('../types.js').LiveStatus} */
-    let status;
-    try {
-      status = await this.tiktok.getLiveStatus();
-    } catch (error) {
-      if (error instanceof ProviderUnavailableError) {
-        this.logger.warn(`Status LIVE tidak bisa dibaca: ${error.message}`, {
-          reason: error.reason,
+        /** @type {import('../types.js').LiveStatus} */
+        let status;
+        try {
+            status = await this.tiktok.getLiveStatus();
+        } catch (error) {
+            if (error instanceof ProviderUnavailableError) {
+                this.logger.warn(
+                    `Status LIVE tidak bisa dibaca: ${error.message}`,
+                    {
+                        reason: error.reason,
+                    },
+                );
+            } else {
+                this.logger.error(
+                    `Error tak terduga saat mengecek LIVE: ${error?.message}`,
+                );
+            }
+            return { ok: false, error };
+        }
+
+        const decision = decideLiveAction(this.store.get(), status, {
+            liveUpdateInterval: this.config.liveUpdateInterval,
         });
-      } else {
-        this.logger.error(`Error tak terduga saat mengecek LIVE: ${error?.message}`);
-      }
-      return { ok: false, error };
+
+        this.logger.debug(
+            `Keputusan LIVE: ${decision.action} (${decision.reason})`,
+            {
+                liveId: decision.liveId,
+                viewers: status.viewers,
+            },
+        );
+
+        try {
+            switch (decision.action) {
+                case "notify":
+                    await this.#handleNewSession(status, decision.liveId);
+                    break;
+                case "update":
+                    await this.#handleViewerUpdate(status);
+                    break;
+                case "end":
+                    await this.#handleSessionEnd(status);
+                    break;
+                default:
+                    this.logger.info(
+                        status.isLive
+                            ? `@${this.config.username} masih LIVE (tidak ada notifikasi baru).`
+                            : `@${this.config.username} sedang tidak LIVE.`,
+                    );
+            }
+        } catch (error) {
+            this.logger.error(
+                `Gagal memproses aksi LIVE "${decision.action}": ${error?.message}`,
+            );
+            return { ok: false, action: decision.action, error };
+        }
+
+        return { ok: true, action: decision.action };
     }
 
-    const decision = decideLiveAction(this.store.get(), status, {
-      liveUpdateInterval: this.config.liveUpdateInterval,
-    });
+    /**
+     * @param {import('../types.js').LiveStatus} status
+     * @param {string|null} liveId
+     * @private
+     */
+    async #handleNewSession(status, liveId) {
+        // Dua alasan berbeda bisa sampai di sini: sesi LIVE beneran baru, atau
+        // sesi yang sama tapi pesan Discord-nya sudah hilang (lihat
+        // decideLiveAction). Log-nya dibedakan supaya tidak membingungkan saat dibaca.
+        const isResend = this.store.get().currentLiveId === liveId;
+        if (isResend) {
+            this.logger.info(
+                `Pesan LIVE untuk @${status.username} sudah tidak ada di Discord (kemungkinan dihapus manual) -- mengirim notifikasi pengganti.`,
+                { liveId },
+            );
+        } else {
+            this.logger.info(`LIVE baru terdeteksi untuk @${status.username}`, {
+                liveId,
+                title: status.title,
+                viewers: status.viewers,
+            });
+        }
 
-    this.logger.debug(`Keputusan LIVE: ${decision.action} (${decision.reason})`, {
-      liveId: decision.liveId,
-      viewers: status.viewers,
-    });
+        const result = await this.discord.sendLiveNotification(status);
 
-    try {
-      switch (decision.action) {
-        case 'notify':
-          await this.#handleNewSession(status, decision.liveId);
-          break;
-        case 'update':
-          await this.#handleViewerUpdate(status);
-          break;
-        case 'end':
-          await this.#handleSessionEnd(status);
-          break;
-        default:
-          this.logger.info(
-            status.isLive
-              ? `@${this.config.username} masih LIVE (tidak ada notifikasi baru).`
-              : `@${this.config.username} sedang tidak LIVE.`,
-          );
-      }
-    } catch (error) {
-      this.logger.error(`Gagal memproses aksi LIVE "${decision.action}": ${error?.message}`);
-      return { ok: false, action: decision.action, error };
+        // State hanya ditandai setelah Discord menerima pesan. Kalau pengiriman
+        // gagal, currentLiveId tidak berubah sehingga siklus berikutnya mencoba
+        // lagi — lebih baik telat daripada sesi LIVE terlewat tanpa notifikasi.
+        await this.store.update({
+            currentLiveId: liveId,
+            lastLiveStatus: true,
+            liveStartedAt: status.startedAt ?? new Date().toISOString(),
+            liveMessageId: result?.id ?? null,
+            lastLiveUpdateAt: new Date().toISOString(),
+            lastViewerCount: status.viewers,
+            lastTotalViewers: status.totalViewers,
+        });
     }
 
-    return { ok: true, action: decision.action };
-  }
+    /**
+     * @param {import('../types.js').LiveStatus} status
+     * @private
+     */
+    async #handleViewerUpdate(status) {
+        const state = this.store.get();
+        // Pakai startTime asli dari TikTok kalau sudah tersedia, kalau tidak pertahankan yang lama.
+        const startedAt = status.startedAt ?? state.liveStartedAt;
 
-  /**
-   * @param {import('../types.js').LiveStatus} status
-   * @param {string|null} liveId
-   * @private
-   */
-  async #handleNewSession(status, liveId) {
-    // Dua alasan berbeda bisa sampai di sini: sesi LIVE beneran baru, atau
-    // sesi yang sama tapi pesan Discord-nya sudah hilang (lihat
-    // decideLiveAction). Log-nya dibedakan supaya tidak membingungkan saat dibaca.
-    const isResend = this.store.get().currentLiveId === liveId;
-    if (isResend) {
-      this.logger.info(
-        `Pesan LIVE untuk @${status.username} sudah tidak ada di Discord (kemungkinan dihapus manual) -- mengirim notifikasi pengganti.`,
-        { liveId },
-      );
-    } else {
-      this.logger.info(`LIVE baru terdeteksi untuk @${status.username}`, {
-        liveId,
-        title: status.title,
-        viewers: status.viewers,
-      });
+        const updated = await this.discord.updateLiveNotification(
+            state.liveMessageId,
+            {
+                ...status,
+                startedAt,
+            },
+        );
+
+        await this.store.update({
+            lastLiveUpdateAt: new Date().toISOString(),
+            lastViewerCount: status.viewers,
+            liveStartedAt: startedAt,
+            lastTotalViewers:
+                status.totalViewers != null
+                    ? Math.max(status.totalViewers, state.lastTotalViewers ?? 0)
+                    : state.lastTotalViewers,
+            liveMessageId: updated ? state.liveMessageId : null,
+        });
     }
 
-    const result = await this.discord.sendLiveNotification(status);
+    /**
+     * @param {import('../types.js').LiveStatus} status
+     * @private
+     */
+    async #handleSessionEnd(status) {
+        const state = this.store.get();
+        this.logger.info(`Sesi LIVE @${status.username} berakhir.`, {
+            liveId: state.currentLiveId,
+        });
 
-    // State hanya ditandai setelah Discord menerima pesan. Kalau pengiriman
-    // gagal, currentLiveId tidak berubah sehingga siklus berikutnya mencoba
-    // lagi — lebih baik telat daripada sesi LIVE terlewat tanpa notifikasi.
-    await this.store.update({
-      currentLiveId: liveId,
-      lastLiveStatus: true,
-      liveStartedAt: status.startedAt ?? new Date().toISOString(),
-      liveMessageId: result?.id ?? null,
-      lastLiveUpdateAt: new Date().toISOString(),
-      lastViewerCount: status.viewers,
-      lastTotalViewers: status.totalViewers,
-    });
-  }
+        if (state.liveMessageId) {
+            await this.discord.updateLiveNotification(
+                state.liveMessageId,
+                {
+                    ...status,
+                    title: status.title,
+                    startedAt: state.liveStartedAt,
+                    // Momen TERDETEKSINYA berakhir (bukan momen persisnya TikTok
+                    // menutup siaran -- itu tidak diketahui karena sistem ini
+                    // berbasis polling). Dipakai discordNotifier.js untuk hitung durasi.
+                    endedAt: new Date().toISOString(),
+                    viewers: state.lastViewerCount,
+                    totalViewers: state.lastTotalViewers,
+                },
+                { ended: true },
+            );
+        }
 
-  /**
-   * @param {import('../types.js').LiveStatus} status
-   * @private
-   */
-  async #handleViewerUpdate(status) {
-    const state = this.store.get();
-    const updated = await this.discord.updateLiveNotification(state.liveMessageId, status);
-
-    await this.store.update({
-      lastLiveUpdateAt: new Date().toISOString(),
-      lastViewerCount: status.viewers,
-      // enterCount TikTok cuma naik (kumulatif), tapi tetap dijaga dengan
-      // Math.max untuk berjaga-jaga kalau satu polling kebetulan dapat nilai
-      // lebih kecil/null -- jangan sampai angka yang sudah tercatat mundur.
-      lastTotalViewers:
-        status.totalViewers != null
-          ? Math.max(status.totalViewers, state.lastTotalViewers ?? 0)
-          : state.lastTotalViewers,
-      // Kalau pesan sudah tidak ada (dihapus manual), berhenti mencoba mengeditnya.
-      liveMessageId: updated ? state.liveMessageId : null,
-    });
-  }
-
-  /**
-   * @param {import('../types.js').LiveStatus} status
-   * @private
-   */
-  async #handleSessionEnd(status) {
-    const state = this.store.get();
-    this.logger.info(`Sesi LIVE @${status.username} berakhir.`, {
-      liveId: state.currentLiveId,
-    });
-
-    if (state.liveMessageId) {
-      await this.discord.updateLiveNotification(
-        state.liveMessageId,
-        {
-          ...status,
-          title: status.title,
-          startedAt: state.liveStartedAt,
-          // Momen TERDETEKSINYA berakhir (bukan momen persisnya TikTok
-          // menutup siaran -- itu tidak diketahui karena sistem ini
-          // berbasis polling). Dipakai discordNotifier.js untuk hitung durasi.
-          endedAt: new Date().toISOString(),
-          viewers: state.lastViewerCount,
-          totalViewers: state.lastTotalViewers,
-        },
-        { ended: true },
-      );
+        await this.store.update({
+            currentLiveId: null,
+            lastLiveStatus: false,
+            liveStartedAt: null,
+            liveMessageId: null,
+            lastLiveUpdateAt: null,
+            lastViewerCount: null,
+            lastTotalViewers: null,
+        });
     }
-
-    await this.store.update({
-      currentLiveId: null,
-      lastLiveStatus: false,
-      liveStartedAt: null,
-      liveMessageId: null,
-      lastLiveUpdateAt: null,
-      lastViewerCount: null,
-      lastTotalViewers: null,
-    });
-  }
 }

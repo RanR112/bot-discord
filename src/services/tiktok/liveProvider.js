@@ -19,14 +19,14 @@
  * LIVE selamanya.
  */
 
-import { getJson } from '../../utils/http.js';
-import { ProviderUnavailableError } from '../../utils/errors.js';
-import { safeUrl, toIsoTimestamp } from '../../utils/format.js';
+import { getJson } from "../../utils/http.js";
+import { ProviderUnavailableError } from "../../utils/errors.js";
+import { safeUrl, toIsoTimestamp } from "../../utils/format.js";
 
 /** Nilai `status` dari TikTok. 2 = sedang siaran, 4 = offline/selesai. */
 export const ROOM_STATUS_LIVE = 2;
 
-const ROOM_ENDPOINT = 'https://www.tiktok.com/api-live/user/room/';
+const ROOM_ENDPOINT = "https://www.tiktok.com/api-live/user/room/";
 
 /**
  * Mengubah response mentah endpoint room menjadi bentuk LiveStatus.
@@ -37,130 +37,152 @@ const ROOM_ENDPOINT = 'https://www.tiktok.com/api-live/user/room/';
  * @returns {import('../../types.js').LiveStatus}
  */
 export function parseLiveRoomPayload(payload, username) {
-  const data = payload?.data ?? {};
-  const user = data.user ?? {};
-  const room = data.liveRoom ?? {};
+    const data = payload?.data ?? {};
+    const user = data.user ?? {};
+    const room = data.liveRoom ?? {};
 
-  const displayName = typeof user.nickname === 'string' && user.nickname ? user.nickname : null;
-  const url = `https://www.tiktok.com/@${username}/live`;
+    const displayName =
+        typeof user.nickname === "string" && user.nickname
+            ? user.nickname
+            : null;
+    const url = `https://www.tiktok.com/@${username}/live`;
 
-  // Hanya `status === 2` yang berarti benar-benar sedang siaran.
-  const isLive = user.status === ROOM_STATUS_LIVE || room.status === ROOM_STATUS_LIVE;
+    // Hanya `status === 2` yang berarti benar-benar sedang siaran.
+    const isLive =
+        user.status === ROOM_STATUS_LIVE || room.status === ROOM_STATUS_LIVE;
 
-  if (!isLive) {
+    if (!isLive) {
+        return {
+            username,
+            displayName,
+            isLive: false,
+            liveId: null,
+            title: null,
+            viewers: null,
+            totalViewers: null,
+            url,
+            thumbnail: null,
+            startedAt: null,
+            avatar: safeUrl(
+                user.avatarMedium ?? user.avatarThumb ?? user.avatarLarger,
+            ),
+        };
+    }
+
+    const stats = room.liveRoomStats ?? {};
+    const userCount =
+        typeof stats.userCount === "number" && Number.isFinite(stats.userCount)
+            ? stats.userCount
+            : null;
+    const enterCount =
+        typeof stats.enterCount === "number" &&
+        Number.isFinite(stats.enterCount)
+            ? stats.enterCount
+            : null;
+
+    // Di awal siaran TikTok sering mengirim 0 untuk keduanya = belum terisi.
+    const statsReady = (userCount ?? 0) > 0 || (enterCount ?? 0) > 0;
+    const viewers = statsReady ? userCount : null;
+    const totalViewers =
+        enterCount != null && enterCount > 0 ? enterCount : null;
+
     return {
-      username,
-      displayName,
-      isLive: false,
-      liveId: null,
-      title: null,
-      viewers: null,
-      totalViewers: null,
-      url,
-      thumbnail: null,
-      startedAt: null,
-      avatar: safeUrl(user.avatarMedium ?? user.avatarThumb ?? user.avatarLarger),
+        username,
+        displayName,
+        isLive: true,
+        liveId:
+            (typeof user.roomId === "string" && user.roomId) ||
+            (typeof room.streamId === "string" && room.streamId) ||
+            null,
+        title:
+            typeof room.title === "string" && room.title.trim() !== ""
+                ? room.title.trim()
+                : null,
+        viewers,
+        totalViewers,
+        url,
+        thumbnail: safeUrl(room.coverUrl ?? room.squareCoverImg),
+        startedAt: toIsoTimestamp(room.startTime),
+        avatar: safeUrl(
+            user.avatarMedium ?? user.avatarThumb ?? user.avatarLarger,
+        ),
     };
-  }
-
-  const stats = room.liveRoomStats ?? {};
-  const viewers =
-    typeof stats.userCount === 'number' && Number.isFinite(stats.userCount) ? stats.userCount : null;
-  // `enterCount` -- BEST-EFFORT: berdasarkan satu contoh nyata saat riset awal
-  // (akun LIVE dengan userCount=1 tapi enterCount=2638), field ini kemungkinan
-  // besar total kumulatif orang yang pernah masuk room, bukan snapshot sesaat.
-  // Belum ada dokumentasi resmi TikTok yang mengonfirmasi ini -- kalau
-  // ternyata salah/berubah, cukup null-kan field ini, tidak ada tempat lain
-  // di kode yang bergantung padanya.
-  const totalViewers =
-    typeof stats.enterCount === 'number' && Number.isFinite(stats.enterCount) ? stats.enterCount : null;
-
-  return {
-    username,
-    displayName,
-    isLive: true,
-    liveId:
-      (typeof user.roomId === 'string' && user.roomId) ||
-      (typeof room.streamId === 'string' && room.streamId) ||
-      null,
-    title: typeof room.title === 'string' && room.title.trim() !== '' ? room.title.trim() : null,
-    viewers,
-    totalViewers,
-    url,
-    thumbnail: safeUrl(room.coverUrl ?? room.squareCoverImg),
-    startedAt: toIsoTimestamp(room.startTime),
-    avatar: safeUrl(user.avatarMedium ?? user.avatarThumb ?? user.avatarLarger),
-  };
 }
 
 /**
  * Provider status LIVE.
  */
 export class LiveProvider {
-  /**
-   * @param {{
-   *   username: string,
-   *   timeoutMs?: number,
-   *   retries?: number,
-   *   logger: ReturnType<typeof import('../../utils/logger.js').createLogger>,
-   * }} options
-   */
-  constructor({ username, timeoutMs = 15_000, retries = 3, logger }) {
-    this.username = username;
-    this.timeoutMs = timeoutMs;
-    this.retries = retries;
-    this.logger = logger;
-  }
-
-  get name() {
-    return 'web-live-room';
-  }
-
-  /**
-   * @returns {Promise<import('../../types.js').LiveStatus>}
-   * @throws {ProviderUnavailableError} kalau TikTok tidak bisa dibaca
-   */
-  async getLiveStatus() {
-    const url = `${ROOM_ENDPOINT}?aid=1988&sourceType=54&uniqueId=${encodeURIComponent(this.username)}`;
-
-    let payload;
-    try {
-      payload = await getJson(url, {
-        timeoutMs: this.timeoutMs,
-        retries: this.retries,
-        headers: { referer: `https://www.tiktok.com/@${this.username}/live` },
-        onRetry: ({ attempt, delayMs, error }) => {
-          this.logger.warn(
-            `Percobaan ulang ${attempt} pengecekan LIVE dalam ${delayMs}ms: ${error.message}`,
-          );
-        },
-      });
-    } catch (error) {
-      // Body HTML alih-alih JSON = kena halaman tantangan anti-bot TikTok.
-      const looksLikeChallenge =
-        typeof error?.body === 'string' && /wafchallengeid|<!DOCTYPE html/i.test(error.body);
-      throw new ProviderUnavailableError(
-        looksLikeChallenge
-          ? 'TikTok membalas halaman verifikasi anti-bot, bukan data LIVE.'
-          : `Tidak bisa membaca status LIVE dari TikTok: ${error?.message}`,
-        { cause: error, reason: looksLikeChallenge ? 'challenge' : 'network' },
-      );
+    /**
+     * @param {{
+     *   username: string,
+     *   timeoutMs?: number,
+     *   retries?: number,
+     *   logger: ReturnType<typeof import('../../utils/logger.js').createLogger>,
+     * }} options
+     */
+    constructor({ username, timeoutMs = 15_000, retries = 3, logger }) {
+        this.username = username;
+        this.timeoutMs = timeoutMs;
+        this.retries = retries;
+        this.logger = logger;
     }
 
-    if (payload?.statusCode !== 0 && payload?.status_code !== 0) {
-      throw new ProviderUnavailableError(
-        `TikTok membalas statusCode=${payload?.statusCode ?? payload?.status_code} (${payload?.message || 'tanpa pesan'})`,
-        { reason: 'upstream' },
-      );
+    get name() {
+        return "web-live-room";
     }
 
-    if (!payload?.data?.user) {
-      throw new ProviderUnavailableError(
-        `Akun @${this.username} tidak ditemukan atau struktur response TikTok berubah.`,
-        { reason: 'shape' },
-      );
-    }
+    /**
+     * @returns {Promise<import('../../types.js').LiveStatus>}
+     * @throws {ProviderUnavailableError} kalau TikTok tidak bisa dibaca
+     */
+    async getLiveStatus() {
+        const url = `${ROOM_ENDPOINT}?aid=1988&sourceType=54&uniqueId=${encodeURIComponent(this.username)}`;
 
-    return parseLiveRoomPayload(payload, this.username);
-  }
+        let payload;
+        try {
+            payload = await getJson(url, {
+                timeoutMs: this.timeoutMs,
+                retries: this.retries,
+                headers: {
+                    referer: `https://www.tiktok.com/@${this.username}/live`,
+                },
+                onRetry: ({ attempt, delayMs, error }) => {
+                    this.logger.warn(
+                        `Percobaan ulang ${attempt} pengecekan LIVE dalam ${delayMs}ms: ${error.message}`,
+                    );
+                },
+            });
+        } catch (error) {
+            // Body HTML alih-alih JSON = kena halaman tantangan anti-bot TikTok.
+            const looksLikeChallenge =
+                typeof error?.body === "string" &&
+                /wafchallengeid|<!DOCTYPE html/i.test(error.body);
+            throw new ProviderUnavailableError(
+                looksLikeChallenge
+                    ? "TikTok membalas halaman verifikasi anti-bot, bukan data LIVE."
+                    : `Tidak bisa membaca status LIVE dari TikTok: ${error?.message}`,
+                {
+                    cause: error,
+                    reason: looksLikeChallenge ? "challenge" : "network",
+                },
+            );
+        }
+
+        if (payload?.statusCode !== 0 && payload?.status_code !== 0) {
+            throw new ProviderUnavailableError(
+                `TikTok membalas statusCode=${payload?.statusCode ?? payload?.status_code} (${payload?.message || "tanpa pesan"})`,
+                { reason: "upstream" },
+            );
+        }
+
+        if (!payload?.data?.user) {
+            throw new ProviderUnavailableError(
+                `Akun @${this.username} tidak ditemukan atau struktur response TikTok berubah.`,
+                { reason: "shape" },
+            );
+        }
+
+        return parseLiveRoomPayload(payload, this.username);
+    }
 }

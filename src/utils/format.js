@@ -10,8 +10,9 @@
  * @returns {string | null}
  */
 export function formatNumber(value) {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
-  return Math.trunc(value).toLocaleString('en-US');
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+        return null;
+    return Math.trunc(value).toLocaleString("en-US");
 }
 
 /**
@@ -22,9 +23,9 @@ export function formatNumber(value) {
  * @returns {string}
  */
 export function truncate(text, max) {
-  const str = typeof text === 'string' ? text.trim() : '';
-  if (str.length <= max) return str;
-  return `${str.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+    const str = typeof text === "string" ? text.trim() : "";
+    if (str.length <= max) return str;
+    return `${str.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
 /**
@@ -35,26 +36,29 @@ export function truncate(text, max) {
  * @returns {string | null}
  */
 export function toIsoTimestamp(value) {
-  if (value == null) return null;
+    if (value == null) return null;
 
-  let date;
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    // Epoch detik (10 digit) vs milliseconds (13 digit).
-    date = new Date(value < 1e12 ? value * 1000 : value);
-  } else if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed === '') return null;
-    const asNumber = Number(trimmed);
-    date = Number.isFinite(asNumber)
-      ? new Date(asNumber < 1e12 ? asNumber * 1000 : asNumber)
-      : new Date(trimmed);
-  } else if (value instanceof Date) {
-    date = value;
-  } else {
-    return null;
-  }
+    let date;
+    if (typeof value === "number" && Number.isFinite(value)) {
+        if (value <= 0) return null;
+        date = new Date(value < 1e12 ? value * 1000 : value);
+    } else if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed === "") return null;
+        const asNumber = Number(trimmed);
+        if (Number.isFinite(asNumber)) {
+            if (asNumber <= 0) return null;
+            date = new Date(asNumber < 1e12 ? asNumber * 1000 : asNumber);
+        } else {
+            date = new Date(trimmed);
+        }
+    } else if (value instanceof Date) {
+        date = value;
+    } else {
+        return null;
+    }
 
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 /**
@@ -67,13 +71,13 @@ export function toIsoTimestamp(value) {
  * @returns {string | null}
  */
 export function formatDuration(ms) {
-  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) return null;
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
 /**
@@ -85,13 +89,15 @@ export function formatDuration(ms) {
  * @returns {string | null}
  */
 export function safeUrl(value) {
-  if (typeof value !== 'string' || value.trim() === '') return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
-  } catch {
-    return null;
-  }
+    if (typeof value !== "string" || value.trim() === "") return null;
+    try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:"
+            ? url.toString()
+            : null;
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -102,10 +108,10 @@ export function safeUrl(value) {
  * @returns {string}
  */
 export function normalizeUsername(raw) {
-  return String(raw ?? '')
-    .trim()
-    .replace(/^https?:\/\/(www\.)?tiktok\.com\//i, '')
-    .replace(/^@+/, '')
-    .replace(/[/?#].*$/, '')
-    .trim();
+    return String(raw ?? "")
+        .trim()
+        .replace(/^https?:\/\/(www\.)?tiktok\.com\//i, "")
+        .replace(/^@+/, "")
+        .replace(/[/?#].*$/, "")
+        .trim();
 }
