@@ -28,9 +28,9 @@
   "lastLiveStatus": true,
   "liveStartedAt": "2026-11-17T12:12:53.000Z",
   "liveMessageId": "1572223089465495573",
-  "lastLiveUpdateAt": "2026-11-17T13:15:24.785Z",
-  "lastViewerCount": 6,
-  "lastTotalViewers": 84,
+  "lastLiveUpdateAt": "2026-11-17T13:21:18.157Z",
+  "lastViewerCount": 5,
+  "lastTotalViewers": 87,
   "knownMemberIds": [
     "408785106942164992",
     "411916947773587456",
@@ -67,5 +67,5 @@
     "545046819563110420"
   ],
   "memberBootstrapped": true,
-  "lastCheckedAt": "2026-11-17T13:20:20.711Z"
+  "lastCheckedAt": "2026-11-17T13:21:19.057Z"
 }
